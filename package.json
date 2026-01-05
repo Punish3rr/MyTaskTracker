@@ -1,0 +1,77 @@
+{
+  "name": "taskvault",
+  "version": "1.0.0",
+  "description": "Offline-first personal operational memory system for Windows",
+  "main": "dist-electron/electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:electron && npm run build:vite",
+    "build:electron": "tsc -p tsconfig.node.json && npx tsc electron/preload.ts --outDir dist-electron/electron --module CommonJS --moduleResolution node --target ES2020 --esModuleInterop --skipLibCheck",
+    "build:vite": "vite build",
+    "preview": "vite preview",
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "electron:dev": "npm run build:electron && concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build && electron-builder --win"
+  },
+  "keywords": [
+    "electron",
+    "task",
+    "productivity"
+  ],
+  "author": "Baybars",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "@types/uuid": "^9.0.7",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.16",
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "electron-rebuild": "^3.2.9",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.2.2",
+    "clsx": "^2.1.0",
+    "drizzle-orm": "^0.29.3",
+    "lucide-react": "^0.303.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwind-merge": "^2.2.0",
+    "uuid": "^9.0.1"
+  },
+  "build": {
+    "appId": "com.taskvault.app",
+    "productName": "TaskVault",
+    "main": "dist-electron/electron/main.js",
+    "files": [
+      "dist/**/*",
+      "dist-electron/electron/**/*",
+      "!dist-electron/electron/**/*.d.ts",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

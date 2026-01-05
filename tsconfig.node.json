@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "noEmit": false,
+    "outDir": "dist-electron",
+    "rootDir": ".",
+    "esModuleInterop": true,
+    "resolveJsonModule": true
+  },
+  "include": ["electron/**/*", "vite.config.ts"]
+}
