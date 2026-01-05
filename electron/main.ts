@@ -13,7 +13,7 @@ import {
   searchTasks,
   cleanupExpiredTasks
 } from './db/queries';
-import { processFileAttachment, processImagePaste, getAttachmentAbsolutePath } from './file-handler';
+import { processFileAttachment, processImagePaste, getAttachmentAbsolutePath, openAttachment, revealAttachment, copyAttachmentPath } from './file-handler';
 import { updateGamification, checkNecromancerBonus } from './gamification';
 
 let mainWindow: BrowserWindow | null = null;
@@ -185,4 +185,41 @@ ipcMain.handle('getAttachmentPath', async (_event, relativePath: string) => {
 
 ipcMain.handle('checkNecromancerBonus', async (_event, taskId: string) => {
   return checkNecromancerBonus(taskId);
+});
+
+ipcMain.handle('showFilePicker', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openFile', 'multiSelections'],
+  });
+  return result.canceled ? [] : result.filePaths;
+});
+
+ipcMain.handle('openAttachment', async (_event, relativePath: string) => {
+  await openAttachment(relativePath);
+});
+
+ipcMain.handle('revealAttachment', async (_event, relativePath: string) => {
+  await revealAttachment(relativePath);
+});
+
+ipcMain.handle('copyAttachmentPath', async (_event, relativePath: string) => {
+  await copyAttachmentPath(relativePath);
+});
+
+// Get image as data URL (base64) for secure loading
+ipcMain.handle('getImageDataUrl', async (_event, relativePath: string) => {
+  const absolutePath = getAttachmentAbsolutePath(relativePath);
+  if (existsSync(absolutePath)) {
+    try {
+      const imageBuffer = readFileSync(absolutePath);
+      const base64 = imageBuffer.toString('base64');
+      const ext = relativePath.split('.').pop()?.toLowerCase() || 'png';
+      const mimeType = ext === 'png' ? 'image/png' : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'gif' ? 'image/gif' : 'image/png';
+      return `data:${mimeType};base64,${base64}`;
+    } catch (error) {
+      console.error('Failed to read image:', error);
+      return null;
+    }
+  }
+  return null;
 });

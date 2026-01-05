@@ -11,6 +11,8 @@ export interface Task {
   pinned_summary: string;
   idleAge: number;
   attachmentCount: number;
+  imageCount: number;
+  fileCount: number;
 }
 
 export interface TimelineEntry {
@@ -60,6 +62,11 @@ declare global {
       getGamification: () => Promise<Gamification | null>;
       getAttachmentPath: (relativePath: string) => Promise<string>;
       checkNecromancerBonus: (taskId: string) => Promise<number>;
+      openAttachment: (relativePath: string) => Promise<void>;
+      revealAttachment: (relativePath: string) => Promise<void>;
+      copyAttachmentPath: (relativePath: string) => Promise<void>;
+      showFilePicker: () => Promise<string[]>;
+      getImageDataUrl: (relativePath: string) => Promise<string | null>;
     };
   }
 }

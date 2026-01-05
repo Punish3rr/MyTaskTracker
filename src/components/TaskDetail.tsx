@@ -1,7 +1,17 @@
+// Task detail view with attachment gallery, enhanced timeline, smart functions
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Save, Paperclip, Image as ImageIcon, FileText, CheckCircle, Archive, Trash2 } from 'lucide-react';
+import { 
+  ArrowLeft, Save, Paperclip, Image as ImageIcon, FileText, CheckCircle, Archive, 
+  ExternalLink, FolderOpen, Copy, Ghost, AlertTriangle, Sparkles, FileEdit,
+  Phone, DollarSign, Truck, Clock, ArrowDown
+} from 'lucide-react';
+import { useHotkeys } from 'react-hotkeys-hook';
 import type { TaskDetail as TaskDetailType, TimelineEntry } from '../../electron/preload';
-import { formatDateTime, cn } from '../lib/utils';
+import { formatDateTime, cn, getIdleAgeColor } from '../lib/utils';
+import { AttachmentGallery } from './AttachmentGallery';
+import { ImageLightbox } from './ImageLightbox';
+import { CommandPalette } from './CommandPalette';
+import { toast } from './ui/toast';
 
 interface TaskDetailProps {
   taskDetail: TaskDetailType;
@@ -16,8 +26,18 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
   const [isEditingSummary, setIsEditingSummary] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [lightboxImagePath, setLightboxImagePath] = useState<string>('');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [attachmentPaths, setAttachmentPaths] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  const noteInputRef = useRef<HTMLInputElement>(null);
+  const summaryTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const timelineRefs = useRef<Record<string, HTMLDivElement>>({});
+
+  const idleAge = Math.floor((Date.now() - task.last_touched_at) / 86400000);
+  const isNeglected = task.priority === 'HIGH' && idleAge > 7;
 
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
@@ -26,13 +46,11 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
         if (file.type.startsWith('image/')) {
           e.preventDefault();
           const arrayBuffer = await file.arrayBuffer();
-          // Convert to Uint8Array for IPC (Buffer is Node.js only)
           const uint8Array = new Uint8Array(arrayBuffer);
           await handleImagePaste(uint8Array);
         }
       }
     };
-
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
   }, []);
@@ -45,15 +63,10 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
       e.preventDefault();
       setIsDragging(true);
     };
-
-    const handleDragLeave = () => {
-      setIsDragging(false);
-    };
-
+    const handleDragLeave = () => setIsDragging(false);
     const handleDrop = async (e: DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
         for (let i = 0; i < files.length; i++) {
@@ -63,11 +76,8 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
             const uint8Array = new Uint8Array(arrayBuffer);
             await handleImagePaste(uint8Array);
           } else {
-            // For drag-drop, Electron provides file path via dataTransfer
             const filePath = (file as any).path;
-            if (filePath) {
-              await handleFileAttach(filePath);
-            }
+            if (filePath) await handleFileAttach(filePath);
           }
         }
       }
@@ -76,7 +86,6 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     dropZone.addEventListener('dragover', handleDragOver);
     dropZone.addEventListener('dragleave', handleDragLeave);
     dropZone.addEventListener('drop', handleDrop);
-
     return () => {
       dropZone.removeEventListener('dragover', handleDragOver);
       dropZone.removeEventListener('dragleave', handleDragLeave);
@@ -84,13 +93,28 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     };
   }, []);
 
+  // Hotkeys
+  useHotkeys('ctrl+k', (e) => {
+    e.preventDefault();
+    setIsCommandPaletteOpen(true);
+  });
+  useHotkeys('ctrl+enter', (e) => {
+    e.preventDefault();
+    handleAddNote();
+  });
+  useHotkeys('ctrl+v', () => {
+    // Handled by paste event
+  });
+
   const handleImagePaste = async (buffer: Uint8Array) => {
     try {
       await window.electronAPI.pasteImage(task.id, buffer);
       await refreshTask();
       await window.electronAPI.checkNecromancerBonus(task.id);
+      toast.success('Image pasted');
     } catch (error) {
       console.error('Failed to paste image:', error);
+      toast.error('Failed to paste image');
     }
   };
 
@@ -99,8 +123,10 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
       await window.electronAPI.attachFile(task.id, filePath);
       await refreshTask();
       await window.electronAPI.checkNecromancerBonus(task.id);
+      toast.success('File attached');
     } catch (error) {
       console.error('Failed to attach file:', error);
+      toast.error('Failed to attach file');
     }
   };
 
@@ -114,11 +140,15 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
           const uint8Array = new Uint8Array(arrayBuffer);
           await handleImagePaste(uint8Array);
         } else {
-          // For file input, we need to use a different approach
-          // Since we can't get the file path directly, we'll need to handle this differently
-          console.warn('File attachment via input requires IPC enhancement');
+          // For file input, we can't get the path directly in renderer
+          // Use file picker dialog instead
+          toast.info('Please use the Attach button or drag & drop files');
         }
       }
+    }
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -140,21 +170,21 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     });
     setIsEditingSummary(false);
     await refreshTask();
+    toast.success('Summary saved');
   };
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;
-    
     await window.electronAPI.addTimelineEntry({
       taskId: task.id,
       type: 'NOTE',
       content: newNote,
       updateTouched: true,
     });
-    
     setNewNote('');
     await refreshTask();
     await window.electronAPI.checkNecromancerBonus(task.id);
+    toast.success('Note added');
   };
 
   const handleStatusChange = async (status: 'OPEN' | 'DONE' | 'ARCHIVED') => {
@@ -164,43 +194,195 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
       updateTouched: true,
     });
     await refreshTask();
+    toast.success(`Task marked as ${status}`);
   };
 
-  const [attachmentPaths, setAttachmentPaths] = useState<Record<string, string>>({});
+  const handlePriorityChange = async (priority: 'LOW' | 'NORMAL' | 'HIGH') => {
+    await window.electronAPI.updateTask({
+      id: task.id,
+      priority,
+    });
+    await refreshTask();
+    toast.success(`Priority set to ${priority}`);
+  };
 
   const getAttachmentPath = async (relativePath: string): Promise<string> => {
-    if (attachmentPaths[relativePath]) {
-      return attachmentPaths[relativePath];
-    }
+    if (attachmentPaths[relativePath]) return attachmentPaths[relativePath];
     const absolutePath = await window.electronAPI.getAttachmentPath(relativePath);
     setAttachmentPaths(prev => ({ ...prev, [relativePath]: absolutePath }));
     return absolutePath;
   };
 
-  const ImageEntry = ({ entry, getAttachmentPath }: { entry: TimelineEntry; getAttachmentPath: (path: string) => Promise<string> }) => {
-    const [imagePath, setImagePath] = useState<string>('');
+  const handleOpenImage = async (entry: TimelineEntry) => {
+    const dataUrl = await window.electronAPI.getImageDataUrl(entry.content);
+    if (dataUrl) {
+      setLightboxImage(entry.content);
+      setLightboxImagePath(dataUrl);
+    }
+  };
+
+  const handleOpenImageExternal = async () => {
+    if (lightboxImage) {
+      await window.electronAPI.openAttachment(lightboxImage);
+    }
+  };
+
+  const handleFileAction = async (entry: TimelineEntry, action: 'open' | 'reveal' | 'copy') => {
+    try {
+      if (action === 'open') {
+        await window.electronAPI.openAttachment(entry.content);
+        toast.success('File opened');
+      } else if (action === 'reveal') {
+        await window.electronAPI.revealAttachment(entry.content);
+        toast.success('File location revealed');
+      } else if (action === 'copy') {
+        await window.electronAPI.copyAttachmentPath(entry.content);
+        toast.success('Path copied to clipboard');
+      }
+    } catch (error) {
+      console.error('File action failed:', error);
+      toast.error('Action failed');
+    }
+  };
+
+  const insertNotePreset = (preset: string) => {
+    const presets: Record<string, string> = {
+      update: 'Update: ',
+      call: 'Call: ',
+      quote: 'Quote: $',
+      shipping: 'Shipping: ',
+      waiting: 'Waiting on: ',
+    };
+    setNewNote(presets[preset] || '');
+    noteInputRef.current?.focus();
+  };
+
+  const insertSummaryTemplate = () => {
+    const template = `Goal:
+Current status:
+Next action:
+Links/files:
+Prices/quotes:`;
+    setPinnedSummary(template);
+    setIsEditingSummary(true);
+    summaryTextareaRef.current?.focus();
+  };
+
+  const scrollToTimelineEntry = (entryId: string) => {
+    const element = timelineRefs.current[entryId];
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      element.classList.add('ring-2', 'ring-blue-500');
+      setTimeout(() => {
+        element.classList.remove('ring-2', 'ring-blue-500');
+      }, 2000);
+    }
+  };
+
+  const ImageEntry = ({ entry }: { entry: TimelineEntry }) => {
+    const [imageDataUrl, setImageDataUrl] = useState<string>('');
 
     useEffect(() => {
-      getAttachmentPath(entry.content).then(setImagePath);
+      window.electronAPI.getImageDataUrl(entry.content).then(dataUrl => {
+        if (dataUrl) setImageDataUrl(dataUrl);
+      }).catch(err => {
+        console.error('Failed to load image:', err);
+      });
     }, [entry.content]);
 
     return (
-      <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+      <div 
+        ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
+        className="p-4 bg-gray-800 rounded-lg border border-gray-700"
+      >
         <div className="text-sm text-gray-400 mb-2 flex items-center gap-2">
           <ImageIcon className="w-4 h-4" />
           {formatDateTime(entry.created_at)}
         </div>
-        {imagePath && (
-          <img
-            src={`file://${imagePath}`}
-            alt="Attachment"
-            className="max-w-full h-auto rounded-lg mt-2"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
-          />
+        {imageDataUrl && (
+          <div className="mt-2">
+            <img
+              src={imageDataUrl}
+              alt="Attachment"
+              className="max-w-md h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => handleOpenImage(entry)}
+            />
+            <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => handleOpenImage(entry)}
+                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+              >
+                <ExternalLink className="w-3 h-3" />
+                View
+              </button>
+              <button
+                onClick={async () => {
+                  await window.electronAPI.openAttachment(entry.content);
+                  toast.success('Image opened');
+                }}
+                className="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1"
+              >
+                Open
+              </button>
+            </div>
+          </div>
         )}
-        <div className="text-xs text-gray-500 mt-2">{entry.content}</div>
+      </div>
+    );
+  };
+
+  const FileEntry = ({ entry }: { entry: TimelineEntry }) => {
+    const filename = entry.content.split('/').pop() || '';
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const getFileTypeLabel = () => {
+      if (['pdf'].includes(ext)) return 'PDF';
+      if (['doc', 'docx'].includes(ext)) return 'DOC';
+      if (['xls', 'xlsx'].includes(ext)) return 'XLS';
+      if (['zip', 'rar', '7z'].includes(ext)) return 'ZIP';
+      return ext.toUpperCase() || 'FILE';
+    };
+
+    return (
+      <div 
+        ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
+        className="p-4 bg-gray-800 rounded-lg border border-gray-700"
+      >
+        <div className="text-sm text-gray-400 mb-2 flex items-center gap-2">
+          <FileText className="w-4 h-4" />
+          {formatDateTime(entry.created_at)}
+        </div>
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-gray-400" />
+            <div>
+              <div className="text-gray-200 font-medium">{filename}</div>
+              <div className="text-xs text-gray-500">{getFileTypeLabel()}</div>
+            </div>
+          </div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => handleFileAction(entry, 'open')}
+              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+              title="Open"
+            >
+              <ExternalLink className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleFileAction(entry, 'reveal')}
+              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+              title="Reveal in folder"
+            >
+              <FolderOpen className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleFileAction(entry, 'copy')}
+              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+              title="Copy path"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       </div>
     );
   };
@@ -209,59 +391,49 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     switch (entry.type) {
       case 'NOTE':
         return (
-          <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+          <div 
+            ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
+            className="p-4 bg-gray-800 rounded-lg border border-gray-700"
+          >
             <div className="text-sm text-gray-400 mb-2">{formatDateTime(entry.created_at)}</div>
             <div className="text-gray-200 whitespace-pre-wrap">{entry.content}</div>
           </div>
         );
-      
       case 'IMAGE':
-        return (
-          <ImageEntry key={entry.id} entry={entry} getAttachmentPath={getAttachmentPath} />
-        );
-      
+        return <ImageEntry key={entry.id} entry={entry} />;
       case 'FILE':
-        return (
-          <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
-            <div className="text-sm text-gray-400 mb-2 flex items-center gap-2">
-              <FileText className="w-4 h-4" />
-              {formatDateTime(entry.created_at)}
-            </div>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-gray-200">{entry.content.split('/').pop()}</span>
-              <button
-                onClick={() => {
-                  // Reveal in folder - would need IPC
-                  console.log('Reveal:', entry.content);
-                }}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                Reveal
-              </button>
-            </div>
-          </div>
-        );
-      
+        return <FileEntry key={entry.id} entry={entry} />;
       case 'STATUS':
         return (
-          <div className="p-4 bg-gray-800 rounded-lg border border-gray-700">
+          <div 
+            ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
+            className="p-4 bg-gray-800 rounded-lg border border-gray-700"
+          >
             <div className="text-sm text-gray-400">{formatDateTime(entry.created_at)}</div>
             <div className="text-gray-300 mt-1">Status changed: {entry.content}</div>
           </div>
         );
-      
       case 'GAMIFY':
         return (
-          <div className="p-4 bg-purple-900/20 rounded-lg border border-purple-700/30">
+          <div 
+            ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
+            className="p-4 bg-purple-900/20 rounded-lg border border-purple-700/30"
+          >
             <div className="text-sm text-purple-400">{formatDateTime(entry.created_at)}</div>
-            <div className="text-purple-300 mt-1">🎮 {entry.content}</div>
+            <div className="text-purple-300 mt-1 flex items-center gap-2">
+              <Sparkles className="w-4 h-4" />
+              {entry.content}
+            </div>
           </div>
         );
-      
       default:
         return null;
     }
   };
+
+  const attachments = timeline.filter(e => e.type === 'IMAGE' || e.type === 'FILE');
+  const imageCount = timeline.filter(e => e.type === 'IMAGE').length;
+  const fileCount = timeline.filter(e => e.type === 'FILE').length;
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
@@ -293,8 +465,37 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
         </div>
       </header>
 
+      {isNeglected && (
+        <div className="bg-red-900/20 border-b border-red-700/30 px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertTriangle className="w-4 h-4" />
+            <span className="text-sm font-medium">Neglected: {idleAge} days idle</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => noteInputRef.current?.focus()}
+              className="px-2 py-1 text-xs bg-red-600/20 text-red-400 border border-red-600/30 rounded hover:bg-red-600/30"
+            >
+              Add Note
+            </button>
+            <button
+              onClick={() => handleStatusChange('DONE')}
+              className="px-2 py-1 text-xs bg-red-600/20 text-red-400 border border-red-600/30 rounded hover:bg-red-600/30"
+            >
+              Mark Done
+            </button>
+            <button
+              onClick={() => handlePriorityChange('NORMAL')}
+              className="px-2 py-1 text-xs bg-red-600/20 text-red-400 border border-red-600/30 rounded hover:bg-red-600/30"
+            >
+              Lower Priority
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Metadata */}
+        {/* Left Panel */}
         <div className="w-1/3 border-r border-gray-800 p-6 overflow-auto">
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-4">{task.title}</h1>
@@ -329,6 +530,21 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
               </div>
               
               <div>
+                <label className="text-sm text-gray-400">Idle Age</label>
+                <div className="mt-1 flex items-center gap-2">
+                  {idleAge > 7 && <Ghost className={cn("w-4 h-4", getIdleAgeColor(idleAge))} />}
+                  <span className={cn("text-sm font-medium", getIdleAgeColor(idleAge))}>
+                    {idleAge === 0 ? 'Fresh' : idleAge === 1 ? '1 day' : `${idleAge} days`}
+                  </span>
+                </div>
+              </div>
+              
+              <div>
+                <label className="text-sm text-gray-400">Timeline Entries</label>
+                <div className="mt-1 text-sm text-gray-300">{timeline.length}</div>
+              </div>
+              
+              <div>
                 <label className="text-sm text-gray-400">Created</label>
                 <div className="mt-1 text-sm text-gray-300">{formatDateTime(task.created_at)}</div>
               </div>
@@ -340,21 +556,34 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
             </div>
           </div>
 
-          <div>
+          <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-semibold text-gray-300">Pinned Summary</label>
-              {!isEditingSummary && (
-                <button
-                  onClick={() => setIsEditingSummary(true)}
-                  className="text-xs text-blue-400 hover:text-blue-300"
-                >
-                  Edit
-                </button>
-              )}
+              <div className="flex gap-1">
+                {!isEditingSummary && !task.pinned_summary && (
+                  <button
+                    onClick={insertSummaryTemplate}
+                    className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                    title="Insert template"
+                  >
+                    <FileEdit className="w-3 h-3" />
+                    Template
+                  </button>
+                )}
+                {!isEditingSummary && (
+                  <button
+                    onClick={() => setIsEditingSummary(true)}
+                    className="text-xs text-blue-400 hover:text-blue-300"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             </div>
             {isEditingSummary ? (
               <div>
                 <textarea
+                  ref={summaryTextareaRef}
                   value={pinnedSummary}
                   onChange={(e) => setPinnedSummary(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
@@ -389,6 +618,12 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
               </div>
             )}
           </div>
+
+          <AttachmentGallery
+            timeline={timeline}
+            onSelectAttachment={(entry) => scrollToTimelineEntry(entry.id)}
+            getAttachmentPath={getAttachmentPath}
+          />
         </div>
 
         {/* Right Panel - Timeline */}
@@ -396,8 +631,9 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
           <div className="border-b border-gray-800 p-4">
             <div className="flex items-center gap-2 mb-3">
               <input
+                ref={noteInputRef}
                 type="text"
-                placeholder="Add a note..."
+                placeholder="Add a note... (Ctrl+Enter)"
                 value={newNote}
                 onChange={(e) => setNewNote(e.target.value)}
                 onKeyDown={(e) => {
@@ -421,14 +657,61 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
                 className="hidden"
               />
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={async () => {
+                  try {
+                    const filePaths = await window.electronAPI.showFilePicker();
+                    for (const filePath of filePaths) {
+                      await handleFileAttach(filePath);
+                    }
+                  } catch (error) {
+                    console.error('File picker failed:', error);
+                  }
+                }}
                 className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2"
               >
                 <Paperclip className="w-4 h-4" />
                 Attach
               </button>
             </div>
-            <div className="text-xs text-gray-500">Ctrl+V to paste image, or drag & drop files</div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-gray-500">Presets:</span>
+              <button
+                onClick={() => insertNotePreset('update')}
+                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
+              >
+                <FileEdit className="w-3 h-3" />
+                Update
+              </button>
+              <button
+                onClick={() => insertNotePreset('call')}
+                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
+              >
+                <Phone className="w-3 h-3" />
+                Call
+              </button>
+              <button
+                onClick={() => insertNotePreset('quote')}
+                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
+              >
+                <DollarSign className="w-3 h-3" />
+                Quote
+              </button>
+              <button
+                onClick={() => insertNotePreset('shipping')}
+                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
+              >
+                <Truck className="w-3 h-3" />
+                Shipping
+              </button>
+              <button
+                onClick={() => insertNotePreset('waiting')}
+                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
+              >
+                <Clock className="w-3 h-3" />
+                Waiting
+              </button>
+            </div>
+            <div className="text-xs text-gray-500 mt-2">Ctrl+V to paste image, or drag & drop files</div>
           </div>
 
           <div
@@ -452,6 +735,42 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
           </div>
         </div>
       </div>
+
+      {lightboxImage && (
+        <ImageLightbox
+          imagePath={lightboxImagePath}
+          onClose={() => {
+            setLightboxImage(null);
+            setLightboxImagePath('');
+          }}
+          onOpenExternal={handleOpenImageExternal}
+        />
+      )}
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNewTask={() => {}}
+        onToggleDone={() => handleStatusChange(task.status === 'DONE' ? 'OPEN' : 'DONE')}
+        onArchive={() => handleStatusChange('ARCHIVED')}
+        onSetPriority={handlePriorityChange}
+        onAddNote={() => noteInputRef.current?.focus()}
+        onAttachFile={async () => {
+          try {
+            const filePaths = await window.electronAPI.showFilePicker();
+            for (const filePath of filePaths) {
+              await handleFileAttach(filePath);
+            }
+          } catch (error) {
+            console.error('File picker failed:', error);
+          }
+        }}
+        onFocusSummary={() => {
+          setIsEditingSummary(true);
+          summaryTextareaRef.current?.focus();
+        }}
+        currentTaskId={task.id}
+      />
     </div>
   );
 };

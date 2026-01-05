@@ -36,3 +36,11 @@ export function getIdleAgeBadge(idleAge: number): string {
   if (idleAge === 1) return '1 day';
   return `${idleAge} days`;
 }
+
+export function getFileTypeIcon(ext: string): string {
+  if (['pdf'].includes(ext)) return '📄';
+  if (['doc', 'docx'].includes(ext)) return '📝';
+  if (['xls', 'xlsx'].includes(ext)) return '📊';
+  if (['zip', 'rar', '7z'].includes(ext)) return '📦';
+  return '📎';
+}

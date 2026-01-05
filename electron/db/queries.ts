@@ -19,6 +19,8 @@ export interface TaskWithIdleAge {
   pinned_summary: string;
   idleAge: number;
   attachmentCount: number;
+  imageCount: number;
+  fileCount: number;
 }
 
 export async function getTasks(): Promise<TaskWithIdleAge[]> {
@@ -33,6 +35,8 @@ export async function getTasks(): Promise<TaskWithIdleAge[]> {
     const attachmentEntries = taskEntries.filter(e => 
       e.type === 'IMAGE' || e.type === 'FILE'
     );
+    const imageEntries = attachmentEntries.filter(e => e.type === 'IMAGE');
+    const fileEntries = attachmentEntries.filter(e => e.type === 'FILE');
     
     const idleAge = Math.floor((now - task.last_touched_at) / 86400000);
     
@@ -40,6 +44,8 @@ export async function getTasks(): Promise<TaskWithIdleAge[]> {
       ...task,
       idleAge,
       attachmentCount: attachmentEntries.length,
+      imageCount: imageEntries.length,
+      fileCount: fileEntries.length,
     };
   });
 
@@ -167,10 +173,19 @@ export async function searchTasks(query: string): Promise<TaskWithIdleAge[]> {
   const allEntries = await db.select().from(timelineEntries);
   const matchingTaskIds = new Set(matchingTasks.map(t => t.id));
   
-  // Also search in timeline notes
-  const matchingEntries = allEntries.filter(e => 
-    e.type === 'NOTE' && e.content.toLowerCase().includes(query.toLowerCase())
-  );
+  // Also search in timeline notes and attachment filenames
+  const queryLower = query.toLowerCase();
+  const matchingEntries = allEntries.filter(e => {
+    if (e.type === 'NOTE') {
+      return e.content.toLowerCase().includes(queryLower);
+    }
+    if (e.type === 'IMAGE' || e.type === 'FILE') {
+      // Extract filename from relative path
+      const filename = e.content.split('/').pop() || e.content;
+      return filename.toLowerCase().includes(queryLower);
+    }
+    return false;
+  });
   matchingEntries.forEach(e => matchingTaskIds.add(e.task_id));
 
   const allMatchingTasks = await db
@@ -185,6 +200,8 @@ export async function searchTasks(query: string): Promise<TaskWithIdleAge[]> {
     const attachmentEntries = taskEntries.filter(e => 
       e.type === 'IMAGE' || e.type === 'FILE'
     );
+    const imageEntries = attachmentEntries.filter(e => e.type === 'IMAGE');
+    const fileEntries = attachmentEntries.filter(e => e.type === 'FILE');
     
     const idleAge = Math.floor((now - task.last_touched_at) / 86400000);
     
@@ -192,6 +209,8 @@ export async function searchTasks(query: string): Promise<TaskWithIdleAge[]> {
       ...task,
       idleAge,
       attachmentCount: attachmentEntries.length,
+      imageCount: imageEntries.length,
+      fileCount: fileEntries.length,
     };
   });
 

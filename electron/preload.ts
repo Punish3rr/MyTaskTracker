@@ -13,6 +13,8 @@ export interface Task {
   pinned_summary: string;
   idleAge: number;
   attachmentCount: number;
+  imageCount: number;
+  fileCount: number;
 }
 
 export interface TimelineEntry {
@@ -68,6 +70,11 @@ const electronAPI = {
   getGamification: (): Promise<Gamification | null> => ipcRenderer.invoke('getGamification'),
   getAttachmentPath: (relativePath: string): Promise<string> => ipcRenderer.invoke('getAttachmentPath', relativePath),
   checkNecromancerBonus: (taskId: string): Promise<number> => ipcRenderer.invoke('checkNecromancerBonus', taskId),
+  openAttachment: (relativePath: string): Promise<void> => ipcRenderer.invoke('openAttachment', relativePath),
+  revealAttachment: (relativePath: string): Promise<void> => ipcRenderer.invoke('revealAttachment', relativePath),
+  copyAttachmentPath: (relativePath: string): Promise<void> => ipcRenderer.invoke('copyAttachmentPath', relativePath),
+  showFilePicker: (): Promise<string[]> => ipcRenderer.invoke('showFilePicker'),
+  getImageDataUrl: (relativePath: string): Promise<string | null> => ipcRenderer.invoke('getImageDataUrl', relativePath),
 };
 
 try {

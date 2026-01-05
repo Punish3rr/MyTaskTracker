@@ -1,7 +1,11 @@
-import { useState, useEffect } from 'react';
-import { Plus, Search, Ghost } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Search, Ghost, Image as ImageIcon, FileText } from 'lucide-react';
+import { useHotkeys } from 'react-hotkeys-hook';
 import type { Task } from '../../electron/preload';
 import { getIdleAgeColor, getIdleAgeBadge, cn } from '../lib/utils';
+import { GamificationWidget } from './GamificationWidget';
+import { CommandPalette } from './CommandPalette';
+import { toast } from './ui/toast';
 
 interface DashboardProps {
   onTaskSelect: (taskId: string) => void;
@@ -13,6 +17,8 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
   const [isCreating, setIsCreating] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'LOW' | 'NORMAL' | 'HIGH'>('NORMAL');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const loadTasks = async () => {
     if (!window.electronAPI) {
@@ -39,6 +45,20 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
     return () => clearInterval(interval);
   }, [searchQuery]);
 
+  // Hotkeys
+  useHotkeys('ctrl+k', (e) => {
+    e.preventDefault();
+    setIsCommandPaletteOpen(true);
+  });
+  useHotkeys('ctrl+f', (e) => {
+    e.preventDefault();
+    searchInputRef.current?.focus();
+  });
+  useHotkeys('ctrl+n', (e) => {
+    e.preventDefault();
+    setIsCreating(true);
+  });
+
   const handleCreateTask = async () => {
     if (!newTaskTitle.trim()) return;
     
@@ -58,9 +78,10 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
       setNewTaskPriority('NORMAL');
       setIsCreating(false);
       await loadTasks();
+      toast.success('Task created');
     } catch (error) {
       console.error('Error creating task:', error);
-      alert('Failed to create task. Check console for details.');
+      toast.error('Failed to create task');
     }
   };
 
@@ -84,14 +105,16 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
       <header className="border-b border-gray-800 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <h1 className="text-2xl font-bold">TaskVault</h1>
           <div className="flex items-center gap-4">
+            <GamificationWidget />
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <input
+                ref={searchInputRef}
                 type="text"
-                placeholder="Search tasks..."
+                placeholder="Search tasks... (Ctrl+F)"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -197,9 +220,24 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                   </span>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-sm text-gray-400">
-                    {task.attachmentCount > 0 ? `${task.attachmentCount} file${task.attachmentCount > 1 ? 's' : ''}` : '—'}
-                  </span>
+                  {task.attachmentCount > 0 ? (
+                    <div className="flex items-center gap-2">
+                      {task.imageCount > 0 && (
+                        <div className="flex items-center gap-1 text-blue-400">
+                          <ImageIcon className="w-3 h-3" />
+                          <span className="text-xs">{task.imageCount}</span>
+                        </div>
+                      )}
+                      {task.fileCount > 0 && (
+                        <div className="flex items-center gap-1 text-gray-400">
+                          <FileText className="w-3 h-3" />
+                          <span className="text-xs">{task.fileCount}</span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-500">—</span>
+                  )}
                 </td>
               </tr>
             ))}
@@ -213,6 +251,12 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
           </tbody>
         </table>
       </div>
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNewTask={() => setIsCreating(true)}
+        onFocusSearch={() => searchInputRef.current?.focus()}
+      />
     </div>
   );
 };

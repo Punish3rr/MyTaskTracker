@@ -49,3 +49,22 @@ export function getAttachmentAbsolutePath(relativePath: string): string {
   const userDataPath = app.getPath('userData');
   return join(userDataPath, 'taskvault', relativePath);
 }
+
+export async function openAttachment(relativePath: string): Promise<void> {
+  const { shell } = await import('electron');
+  const absolutePath = getAttachmentAbsolutePath(relativePath);
+  await shell.openPath(absolutePath);
+}
+
+export async function revealAttachment(relativePath: string): Promise<void> {
+  const { shell } = await import('electron');
+  const absolutePath = getAttachmentAbsolutePath(relativePath);
+  const { dirname } = await import('path');
+  await shell.showItemInFolder(absolutePath);
+}
+
+export async function copyAttachmentPath(relativePath: string): Promise<void> {
+  const { clipboard } = await import('electron');
+  const absolutePath = getAttachmentAbsolutePath(relativePath);
+  clipboard.writeText(absolutePath);
+}
