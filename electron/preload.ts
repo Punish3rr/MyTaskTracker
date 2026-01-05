@@ -75,6 +75,7 @@ const electronAPI = {
   copyAttachmentPath: (relativePath: string): Promise<void> => ipcRenderer.invoke('copyAttachmentPath', relativePath),
   showFilePicker: (): Promise<string[]> => ipcRenderer.invoke('showFilePicker'),
   getImageDataUrl: (relativePath: string): Promise<string | null> => ipcRenderer.invoke('getImageDataUrl', relativePath),
+  deleteTask: (taskId: string): Promise<boolean> => ipcRenderer.invoke('deleteTask', taskId),
 };
 
 try {

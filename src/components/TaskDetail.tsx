@@ -1,7 +1,7 @@
 // Task detail view with attachment gallery, enhanced timeline, smart functions
 import { useState, useEffect, useRef } from 'react';
-import { 
-  ArrowLeft, Save, Paperclip, Image as ImageIcon, FileText, CheckCircle, Archive, 
+import {
+  ArrowLeft, Save, Paperclip, Image as ImageIcon, FileText, CheckCircle, Archive, Trash2,
   ExternalLink, FolderOpen, Copy, Ghost, AlertTriangle, Sparkles, FileEdit,
   Phone, DollarSign, Truck, Clock, ArrowDown
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import { formatDateTime, cn, getIdleAgeColor } from '../lib/utils';
 import { AttachmentGallery } from './AttachmentGallery';
 import { ImageLightbox } from './ImageLightbox';
 import { CommandPalette } from './CommandPalette';
+import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from './ui/toast';
 
 interface TaskDetailProps {
@@ -29,6 +30,7 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [lightboxImagePath, setLightboxImagePath] = useState<string>('');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [attachmentPaths, setAttachmentPaths] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -204,6 +206,31 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     });
     await refreshTask();
     toast.success(`Priority set to ${priority}`);
+  };
+
+  const handleDeleteClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    try {
+      const success = await window.electronAPI.deleteTask(task.id);
+      if (success) {
+        toast.success('Task deleted');
+        onBack(); // Go back to dashboard
+      } else {
+        toast.error('Failed to delete task');
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      toast.error('Failed to delete task');
+    } finally {
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteConfirm(false);
   };
 
   const getAttachmentPath = async (relativePath: string): Promise<string> => {
@@ -460,6 +487,13 @@ Prices/quotes:`;
             >
               <Archive className="w-4 h-4" />
               Archive
+            </button>
+            <button
+              onClick={handleDeleteClick}
+              className="flex items-center gap-2 px-3 py-1 bg-red-600/20 text-red-400 border border-red-600/30 rounded-lg hover:bg-red-600/30 transition-colors"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete
             </button>
           </div>
         </div>
@@ -770,6 +804,15 @@ Prices/quotes:`;
           summaryTextareaRef.current?.focus();
         }}
         currentTaskId={task.id}
+      />
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Task"
+        message="Are you sure you want to delete this task? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
       />
     </div>
   );

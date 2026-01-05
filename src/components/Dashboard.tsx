@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Search, Ghost, Image as ImageIcon, FileText } from 'lucide-react';
+import { Plus, Search, Ghost, Image as ImageIcon, FileText, Trash2 } from 'lucide-react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import type { Task } from '../../electron/preload';
 import { getIdleAgeColor, getIdleAgeBadge, cn } from '../lib/utils';
 import { GamificationWidget } from './GamificationWidget';
 import { CommandPalette } from './CommandPalette';
+import { ParticleBackground } from './ParticleBackground';
+import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from './ui/toast';
 
 interface DashboardProps {
@@ -18,6 +20,10 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'LOW' | 'NORMAL' | 'HIGH'>('NORMAL');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; taskId: string | null }>({
+    isOpen: false,
+    taskId: null,
+  });
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const loadTasks = async () => {
@@ -85,6 +91,46 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
     }
   };
 
+  const handleDeleteClick = (taskId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteConfirm({ isOpen: true, taskId });
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirm.taskId || !window.electronAPI) {
+      setDeleteConfirm({ isOpen: false, taskId: null });
+      return;
+    }
+
+    try {
+      const success = await window.electronAPI.deleteTask(deleteConfirm.taskId);
+      if (success) {
+        await loadTasks();
+        toast.success('Task deleted');
+      } else {
+        toast.error('Failed to delete task');
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      toast.error('Failed to delete task');
+    } finally {
+      setDeleteConfirm({ isOpen: false, taskId: null });
+      // Restore focus to search input
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 100);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteConfirm({ isOpen: false, taskId: null });
+    // Restore focus to search input
+    setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'HIGH': return 'bg-red-500/20 text-red-400 border-red-500/30';
@@ -103,8 +149,10 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
-      <header className="border-b border-gray-800 px-6 py-4">
+    <div className="h-screen flex flex-col bg-gray-900 text-gray-100 relative overflow-hidden">
+      <ParticleBackground />
+      <div className="relative z-10 h-full flex flex-col">
+      <header className="border-b border-gray-800 px-6 py-4 bg-gray-900/80 backdrop-blur-sm">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-2xl font-bold">TaskVault</h1>
           <div className="flex items-center gap-4">
@@ -116,8 +164,11 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                 type="text"
                 placeholder="Search tasks... (Ctrl+F)"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
                 className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                autoComplete="off"
+                spellCheck="false"
               />
             </div>
             {!isCreating && (
@@ -187,13 +238,20 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Priority</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Idle Age</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Attachments</th>
+              <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Actions</th>
             </tr>
           </thead>
           <tbody>
             {tasks.map((task) => (
               <tr
                 key={task.id}
-                onClick={() => onTaskSelect(task.id)}
+                onClick={(e) => {
+                  // Only navigate if click wasn't on a button or interactive element
+                  if ((e.target as HTMLElement).closest('button')) {
+                    return;
+                  }
+                  onTaskSelect(task.id);
+                }}
                 className="border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer transition-colors"
               >
                 <td className="px-6 py-4">
@@ -239,11 +297,22 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                     <span className="text-sm text-gray-500">—</span>
                   )}
                 </td>
+                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={(e) => handleDeleteClick(task.id, e)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                    title="Delete task"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
               </tr>
             ))}
             {tasks.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                   {searchQuery ? 'No tasks found' : 'No tasks yet. Create your first task!'}
                 </td>
               </tr>
@@ -251,11 +320,21 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
           </tbody>
         </table>
       </div>
+      </div>
       <CommandPalette
         isOpen={isCommandPaletteOpen}
         onClose={() => setIsCommandPaletteOpen(false)}
         onNewTask={() => setIsCreating(true)}
         onFocusSearch={() => searchInputRef.current?.focus()}
+      />
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        title="Delete Task"
+        message="Are you sure you want to delete this task? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
       />
     </div>
   );

@@ -11,7 +11,8 @@ import {
   updateTask, 
   addTimelineEntry,
   searchTasks,
-  cleanupExpiredTasks
+  cleanupExpiredTasks,
+  deleteTask
 } from './db/queries';
 import { processFileAttachment, processImagePaste, getAttachmentAbsolutePath, openAttachment, revealAttachment, copyAttachmentPath } from './file-handler';
 import { updateGamification, checkNecromancerBonus } from './gamification';
@@ -204,6 +205,10 @@ ipcMain.handle('revealAttachment', async (_event, relativePath: string) => {
 
 ipcMain.handle('copyAttachmentPath', async (_event, relativePath: string) => {
   await copyAttachmentPath(relativePath);
+});
+
+ipcMain.handle('deleteTask', async (_event, taskId: string) => {
+  return deleteTask(taskId);
 });
 
 // Get image as data URL (base64) for secure loading

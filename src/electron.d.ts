@@ -67,6 +67,7 @@ declare global {
       copyAttachmentPath: (relativePath: string) => Promise<void>;
       showFilePicker: () => Promise<string[]>;
       getImageDataUrl: (relativePath: string) => Promise<string | null>;
+      deleteTask: (taskId: string) => Promise<boolean>;
     };
   }
 }

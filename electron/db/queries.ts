@@ -282,3 +282,32 @@ export async function cleanupExpiredTasks() {
     }
   }
 }
+
+export async function deleteTask(taskId: string): Promise<boolean> {
+  const db = getDatabase();
+  
+  // Get task to verify it exists
+  const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+  if (task.length === 0) {
+    return false;
+  }
+
+  // Delete timeline entries (cascade should handle this, but explicit is safer)
+  await db.delete(timelineEntries).where(eq(timelineEntries.task_id, taskId));
+  
+  // Delete task
+  await db.delete(tasks).where(eq(tasks.id, taskId));
+  
+  // Delete attachment folder
+  const userDataPath = app.getPath('userData');
+  const taskAttachmentsDir = join(userDataPath, 'taskvault', 'attachments', taskId);
+  try {
+    if (existsSync(taskAttachmentsDir)) {
+      rmSync(taskAttachmentsDir, { recursive: true, force: true });
+    }
+  } catch (error) {
+    console.error(`Failed to delete attachments for task ${taskId}:`, error);
+  }
+  
+  return true;
+}
