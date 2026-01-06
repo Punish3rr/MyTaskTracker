@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 export interface Task {
   id: string;
   title: string;
-  status: 'OPEN' | 'DONE' | 'ARCHIVED';
+  status: 'OPEN' | 'WAITING' | 'BLOCKED' | 'DONE' | 'ARCHIVED';
   priority: 'LOW' | 'NORMAL' | 'HIGH';
   created_at: number;
   last_touched_at: number;
@@ -17,6 +17,9 @@ export interface Task {
   imageCount: number;
   fileCount: number;
   lastEntryAt: number | null;
+  latestEntryContent: string | null;
+  latestEntryType: 'NOTE' | 'IMAGE' | 'FILE' | 'STATUS' | 'GAMIFY' | null;
+  latestEntryDate: number | null;
 }
 
 export interface TimelineEntry {

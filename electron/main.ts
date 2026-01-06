@@ -1,5 +1,5 @@
 // Main process entry point for TaskVault Electron application
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import { EventEmitter } from 'events';
 import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
@@ -72,6 +72,79 @@ function createWindow() {
     console.log('Loading HTML from:', htmlPath);
     mainWindow.loadFile(htmlPath);
   }
+
+  // Fix Windows menu visibility
+  mainWindow.setAutoHideMenuBar(false);
+  mainWindow.setMenuBarVisibility(true);
+
+  // Create application menu
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Task',
+          accelerator: 'Ctrl+N',
+          click: () => {
+            mainWindow?.webContents.send('menu-new-task');
+          },
+        },
+        {
+          label: 'Search',
+          accelerator: 'Ctrl+F',
+          click: () => {
+            mainWindow?.webContents.send('menu-search');
+          },
+        },
+        { type: 'separator' },
+        {
+          label: 'Quit',
+          accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
+          click: () => {
+            app.quit();
+          },
+        },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Reload',
+          accelerator: 'Ctrl+R',
+          click: () => {
+            mainWindow?.reload();
+          },
+        },
+        {
+          label: 'Toggle DevTools',
+          accelerator: 'Ctrl+Shift+I',
+          click: () => {
+            mainWindow?.webContents.toggleDevTools();
+          },
+        },
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About TaskVault',
+          click: () => {
+            dialog.showMessageBox(mainWindow!, {
+              type: 'info',
+              title: 'About TaskVault',
+              message: 'TaskVault 1.0.0',
+              detail: 'Offline-first personal operational memory system',
+            });
+          },
+        },
+      ],
+    },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();

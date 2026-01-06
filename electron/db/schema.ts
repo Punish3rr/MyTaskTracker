@@ -1,10 +1,10 @@
-// Database schema definitions using Drizzle ORM
+﻿// Database schema definitions using Drizzle ORM
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
 
 export const tasks = sqliteTable('tasks', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
-  status: text('status', { enum: ['OPEN', 'DONE', 'ARCHIVED'] }).notNull().default('OPEN'),
+  status: text('status', { enum: ['OPEN', 'WAITING', 'BLOCKED', 'DONE', 'ARCHIVED'] }).notNull().default('OPEN'),
   priority: text('priority', { enum: ['LOW', 'NORMAL', 'HIGH'] }).notNull().default('NORMAL'),
   created_at: integer('created_at').notNull(),
   last_touched_at: integer('last_touched_at').notNull(),
@@ -34,4 +34,3 @@ export type NewTask = typeof tasks.$inferInsert;
 export type TimelineEntry = typeof timelineEntries.$inferSelect;
 export type NewTimelineEntry = typeof timelineEntries.$inferInsert;
 export type Gamification = typeof gamification.$inferSelect;
-

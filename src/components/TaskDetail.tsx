@@ -180,7 +180,7 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     toast.success('Note added');
   };
 
-  const handleStatusChange = async (status: 'OPEN' | 'DONE' | 'ARCHIVED') => {
+  const handleStatusChange = async (status: 'OPEN' | 'WAITING' | 'BLOCKED' | 'DONE' | 'ARCHIVED') => {
     await window.electronAPI.updateTask({
       id: task.id,
       status,
@@ -529,14 +529,17 @@ Prices/quotes:`;
               <div>
                 <label className="text-sm text-gray-400">Status</label>
                 <div className="mt-1">
-                  <span className={cn(
-                    "px-2 py-1 rounded text-xs border",
-                    task.status === 'DONE' ? 'bg-green-500/20 text-green-400 border-green-500/30' :
-                    task.status === 'ARCHIVED' ? 'bg-gray-500/20 text-gray-400 border-gray-500/30' :
-                    'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                  )}>
-                    {task.status}
-                  </span>
+                  <select
+                    value={task.status}
+                    onChange={(e) => handleStatusChange(e.target.value as 'OPEN' | 'WAITING' | 'BLOCKED' | 'DONE' | 'ARCHIVED')}
+                    className="w-full px-3 py-1.5 bg-gray-800/60 border border-gray-700/50 rounded-lg text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  >
+                    <option value="OPEN">Open</option>
+                    <option value="WAITING">Waiting</option>
+                    <option value="BLOCKED">Blocked</option>
+                    <option value="DONE">Done</option>
+                    <option value="ARCHIVED">Archived</option>
+                  </select>
                 </div>
               </div>
               

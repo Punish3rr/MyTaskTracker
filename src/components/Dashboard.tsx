@@ -1,6 +1,6 @@
 // Dashboard component with event-driven updates, glassmorphism, and animations
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, Search, Ghost, Image as ImageIcon, FileText, Trash2 } from 'lucide-react';
+import { Plus, Search, Ghost, Image as ImageIcon, FileText, Trash2, Clock, AlertTriangle, CheckCircle, Archive, Circle, Pencil } from 'lucide-react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Task } from '../../electron/preload';
@@ -9,6 +9,7 @@ import { GamificationWidget } from './GamificationWidget';
 import { CommandPalette } from './CommandPalette';
 import { ParticleBackground } from './ParticleBackground';
 import { ConfirmDialog } from './ConfirmDialog';
+import { EditTaskDialog } from './EditTaskDialog';
 import { toast } from './ui/toast';
 import { useDataUpdated } from '../hooks/useDataUpdated';
 
@@ -26,6 +27,10 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; taskId: string | null }>({
     isOpen: false,
     taskId: null,
+  });
+  const [editTask, setEditTask] = useState<{ isOpen: boolean; task: Task | null }>({
+    isOpen: false,
+    task: null,
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -133,6 +138,33 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
     }, 100);
   };
 
+  const handleEditClick = (task: Task, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditTask({ isOpen: true, task });
+  };
+
+  const handleEditSave = async (updates: { title?: string; priority?: string; status?: string }) => {
+    if (!editTask.task || !window.electronAPI) return;
+    
+    try {
+      await window.electronAPI.updateTask({
+        id: editTask.task.id,
+        ...updates,
+      });
+      await loadTasks();
+      toast.success('Task updated');
+    } catch (error) {
+      console.error('Error updating task:', error);
+      toast.error('Failed to update task');
+      throw error;
+    }
+  };
+
+  const handleEditClose = () => {
+    setEditTask({ isOpen: false, task: null });
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'HIGH': return 'bg-red-500/20 text-red-400 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.5)]';
@@ -144,10 +176,44 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'OPEN': return 'bg-blue-500/20 text-blue-400 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.3)]';
+      case 'WAITING': return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30 shadow-[0_0_8px_rgba(234,179,8,0.3)]';
+      case 'BLOCKED': return 'bg-red-500/20 text-red-400 border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.3)]';
       case 'DONE': return 'bg-green-500/20 text-green-400 border-green-500/30 shadow-[0_0_8px_rgba(34,197,94,0.3)]';
       case 'ARCHIVED': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-      default: return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30 shadow-[0_0_8px_rgba(234,179,8,0.3)]';
+      default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'OPEN': return <Circle className="w-3 h-3" />;
+      case 'WAITING': return <Clock className="w-3 h-3" />;
+      case 'BLOCKED': return <AlertTriangle className="w-3 h-3" />;
+      case 'DONE': return <CheckCircle className="w-3 h-3" />;
+      case 'ARCHIVED': return <Archive className="w-3 h-3" />;
+      default: return null;
+    }
+  };
+
+  const formatRelativeTime = (timestamp: number | null): string => {
+    if (!timestamp) return '—';
+    const now = Date.now();
+    const diff = now - timestamp;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ago`;
+    if (hours > 0) return `${hours}h ago`;
+    if (minutes > 0) return `${minutes}m ago`;
+    return 'Just now';
+  };
+
+  const sanitizeSnippet = (content: string | null, maxLength: number = 100): string => {
+    if (!content) return '';
+    return content.replace(/\n/g, ' ').trim().substring(0, maxLength) + (content.length > maxLength ? '...' : '');
   };
 
   const handleRowKeyDown = (e: React.KeyboardEvent, taskId: string) => {
@@ -308,7 +374,8 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={cn("px-2 py-1 rounded text-xs border", getStatusColor(task.status))}>
+                    <span className={cn("px-2 py-1 rounded text-xs border flex items-center gap-1.5 w-fit", getStatusColor(task.status))}>
+                      {getStatusIcon(task.status)}
                       {task.status}
                     </span>
                   </td>
@@ -326,6 +393,46 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                     <span className={cn("text-sm font-medium font-mono", getIdleAgeColor(task.idleAge))}>
                       {getIdleAgeBadge(task.idleAge)}
                     </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    {task.latestEntryType ? (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2 text-sm">
+                          {task.latestEntryType === 'NOTE' && (
+                            <>
+                              <FileText className="w-3 h-3 text-gray-400" />
+                              <span className="text-gray-300 text-xs truncate max-w-[200px]">
+                                {sanitizeSnippet(task.latestEntryContent)}
+                              </span>
+                            </>
+                          )}
+                          {task.latestEntryType === 'IMAGE' && (
+                            <>
+                              <ImageIcon className="w-3 h-3 text-blue-400" />
+                              <span className="text-gray-400 text-xs">Image</span>
+                            </>
+                          )}
+                          {task.latestEntryType === 'FILE' && (
+                            <>
+                              <FileText className="w-3 h-3 text-gray-400" />
+                              <span className="text-gray-400 text-xs truncate max-w-[150px]">
+                                {task.latestEntryContent ? task.latestEntryContent.split('/').pop() : 'File'}
+                              </span>
+                            </>
+                          )}
+                          {(task.latestEntryType === 'STATUS' || task.latestEntryType === 'GAMIFY') && (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
+                        </div>
+                        {task.latestEntryDate && (
+                          <span className="text-xs text-gray-500 font-mono">
+                            {formatRelativeTime(task.latestEntryDate)}
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-500">—</span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     {task.attachmentCount > 0 ? (
@@ -348,17 +455,30 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                     )}
                   </td>
                   <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                    <motion.button
-                      type="button"
-                      onClick={(e) => handleDeleteClick(task.id, e)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
-                      className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
-                      title="Delete task"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </motion.button>
+                    <div className="flex items-center gap-2">
+                      <motion.button
+                        type="button"
+                        onClick={(e) => handleEditClick(task, e)}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-all"
+                        title="Edit task"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </motion.button>
+                      <motion.button
+                        type="button"
+                        onClick={(e) => handleDeleteClick(task.id, e)}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
+                        title="Delete task"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </motion.button>
+                    </div>
                   </td>
                 </motion.tr>
               ))}
@@ -399,6 +519,12 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
         cancelText="Cancel"
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
+      />
+      <EditTaskDialog
+        isOpen={editTask.isOpen}
+        task={editTask.task}
+        onClose={handleEditClose}
+        onSave={handleEditSave}
       />
     </div>
   );
