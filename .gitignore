@@ -8,3 +8,8 @@ dist-electron/
 .vscode/
 .idea/
 
+# Build artifacts and releases
+release/
+*.exe
+*.exe.blockmap
+*.asar
