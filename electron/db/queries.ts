@@ -27,25 +27,35 @@ export async function getTasks(): Promise<TaskWithIdleAge[]> {
   const db = getDatabase();
   const now = Date.now();
   
-  const allTasks = await db.select().from(tasks);
-  const allEntries = await db.select().from(timelineEntries);
-  
-  const tasksWithMetadata = allTasks.map(task => {
-    const taskEntries = allEntries.filter(e => e.task_id === task.id);
-    const attachmentEntries = taskEntries.filter(e => 
-      e.type === 'IMAGE' || e.type === 'FILE'
-    );
-    const imageEntries = attachmentEntries.filter(e => e.type === 'IMAGE');
-    const fileEntries = attachmentEntries.filter(e => e.type === 'FILE');
-    
+  // Use LEFT JOIN with GROUP BY to efficiently count attachments in a single query
+  const tasksWithCounts = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      priority: tasks.priority,
+      created_at: tasks.created_at,
+      last_touched_at: tasks.last_touched_at,
+      archived_at: tasks.archived_at,
+      delete_after_at: tasks.delete_after_at,
+      pinned_summary: tasks.pinned_summary,
+      attachmentCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} IN ('IMAGE', 'FILE') THEN 1 END)`.as('attachmentCount'),
+      imageCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} = 'IMAGE' THEN 1 END)`.as('imageCount'),
+      fileCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} = 'FILE' THEN 1 END)`.as('fileCount'),
+    })
+    .from(tasks)
+    .leftJoin(timelineEntries, eq(tasks.id, timelineEntries.task_id))
+    .groupBy(tasks.id);
+
+  const tasksWithMetadata = tasksWithCounts.map(task => {
     const idleAge = Math.floor((now - task.last_touched_at) / 86400000);
     
     return {
       ...task,
       idleAge,
-      attachmentCount: attachmentEntries.length,
-      imageCount: imageEntries.length,
-      fileCount: fileEntries.length,
+      attachmentCount: task.attachmentCount || 0,
+      imageCount: task.imageCount || 0,
+      fileCount: task.fileCount || 0,
     };
   });
 
@@ -165,22 +175,23 @@ export async function searchTasks(query: string): Promise<TaskWithIdleAge[]> {
   const now = Date.now();
   
   const searchPattern = `%${query}%`;
-  const matchingTasks = await db
+  const queryLower = query.toLowerCase();
+  
+  // Search in task titles
+  const titleMatchingTasks = await db
     .select()
     .from(tasks)
     .where(like(tasks.title, searchPattern));
-
-  const allEntries = await db.select().from(timelineEntries);
-  const matchingTaskIds = new Set(matchingTasks.map(t => t.id));
   
-  // Also search in timeline notes and attachment filenames
-  const queryLower = query.toLowerCase();
+  const matchingTaskIds = new Set(titleMatchingTasks.map(t => t.id));
+  
+  // Search in timeline notes and attachment filenames
+  const allEntries = await db.select().from(timelineEntries);
   const matchingEntries = allEntries.filter(e => {
     if (e.type === 'NOTE') {
       return e.content.toLowerCase().includes(queryLower);
     }
     if (e.type === 'IMAGE' || e.type === 'FILE') {
-      // Extract filename from relative path
       const filename = e.content.split('/').pop() || e.content;
       return filename.toLowerCase().includes(queryLower);
     }
@@ -188,29 +199,40 @@ export async function searchTasks(query: string): Promise<TaskWithIdleAge[]> {
   });
   matchingEntries.forEach(e => matchingTaskIds.add(e.task_id));
 
-  const allMatchingTasks = await db
-    .select()
-    .from(tasks)
-    .where(
-      or(...Array.from(matchingTaskIds).map(id => eq(tasks.id, id)))
-    );
+  if (matchingTaskIds.size === 0) {
+    return [];
+  }
 
-  const tasksWithMetadata = allMatchingTasks.map(task => {
-    const taskEntries = allEntries.filter(e => e.task_id === task.id);
-    const attachmentEntries = taskEntries.filter(e => 
-      e.type === 'IMAGE' || e.type === 'FILE'
-    );
-    const imageEntries = attachmentEntries.filter(e => e.type === 'IMAGE');
-    const fileEntries = attachmentEntries.filter(e => e.type === 'FILE');
-    
+  // Use LEFT JOIN with GROUP BY to efficiently count attachments
+  const tasksWithCounts = await db
+    .select({
+      id: tasks.id,
+      title: tasks.title,
+      status: tasks.status,
+      priority: tasks.priority,
+      created_at: tasks.created_at,
+      last_touched_at: tasks.last_touched_at,
+      archived_at: tasks.archived_at,
+      delete_after_at: tasks.delete_after_at,
+      pinned_summary: tasks.pinned_summary,
+      attachmentCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} IN ('IMAGE', 'FILE') THEN 1 END)`.as('attachmentCount'),
+      imageCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} = 'IMAGE' THEN 1 END)`.as('imageCount'),
+      fileCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} = 'FILE' THEN 1 END)`.as('fileCount'),
+    })
+    .from(tasks)
+    .leftJoin(timelineEntries, eq(tasks.id, timelineEntries.task_id))
+    .where(or(...Array.from(matchingTaskIds).map(id => eq(tasks.id, id))))
+    .groupBy(tasks.id);
+
+  const tasksWithMetadata = tasksWithCounts.map(task => {
     const idleAge = Math.floor((now - task.last_touched_at) / 86400000);
     
     return {
       ...task,
       idleAge,
-      attachmentCount: attachmentEntries.length,
-      imageCount: imageEntries.length,
-      fileCount: fileEntries.length,
+      attachmentCount: task.attachmentCount || 0,
+      imageCount: task.imageCount || 0,
+      fileCount: task.fileCount || 0,
     };
   });
 

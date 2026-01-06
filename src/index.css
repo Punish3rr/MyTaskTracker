@@ -2,45 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* Monospaced font for technical data */
+.font-mono {
+  font-family: 'Courier New', 'Monaco', 'Menlo', monospace;
 }
 
-body {
-  margin: 0;
-  padding: 0;
-  background-color: #1a1a1a;
-  color: #e5e5e5;
+/* Neon glow effects */
+.shadow-neon-blue {
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.5), 0 0 20px rgba(59, 130, 246, 0.3);
 }
 
-* {
-  box-sizing: border-box;
+.shadow-neon-purple {
+  box-shadow: 0 0 10px rgba(147, 51, 234, 0.5), 0 0 20px rgba(147, 51, 234, 0.3);
 }
 
-/* Command Palette Styles */
-[cmdk-root] {
-  max-width: 640px;
-}
-
-[cmdk-input] {
-  font-size: 16px;
-}
-
-[cmdk-item] {
-  cursor: pointer;
-}
-
-[cmdk-item][data-selected="true"] {
-  background-color: rgb(31 41 55);
-}
-
-[cmdk-group-heading] {
-  font-size: 12px;
-  font-weight: 600;
-  color: rgb(156 163 175);
-  padding: 8px 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+/* Command palette styles */
+.command-palette-overlay {
+  backdrop-filter: blur(4px);
 }

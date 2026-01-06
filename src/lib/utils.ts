@@ -44,3 +44,4 @@ export function getFileTypeIcon(ext: string): string {
   if (['zip', 'rar', '7z'].includes(ext)) return '📦';
   return '📎';
 }
+

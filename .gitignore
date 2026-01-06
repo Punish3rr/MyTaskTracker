@@ -7,3 +7,4 @@ dist-electron/
 *.db-journal
 .vscode/
 .idea/
+

@@ -134,3 +134,4 @@ export const AttachmentGallery = ({ timeline, onSelectAttachment, getAttachmentP
     </div>
   );
 };
+

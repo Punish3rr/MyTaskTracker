@@ -40,3 +40,4 @@ export const App = () => {
 
   return <Dashboard onTaskSelect={handleTaskSelect} />;
 };
+

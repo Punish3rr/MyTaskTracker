@@ -152,3 +152,4 @@ All acceptance tests should pass:
 2. Run `npm run build:electron` to rebuild
 3. Run `npm run electron:dev` to test
 4. Verify all features work as expected
+

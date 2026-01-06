@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft, Save, Paperclip, Image as ImageIcon, FileText, CheckCircle, Archive, Trash2,
   ExternalLink, FolderOpen, Copy, Ghost, AlertTriangle, Sparkles, FileEdit,
-  Phone, DollarSign, Truck, Clock, ArrowDown
+  Phone, DollarSign, Truck, Clock
 } from 'lucide-react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import type { TaskDetail as TaskDetailType, TimelineEntry } from '../../electron/preload';
@@ -104,15 +104,11 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     e.preventDefault();
     handleAddNote();
   });
-  useHotkeys('ctrl+v', () => {
-    // Handled by paste event
-  });
 
   const handleImagePaste = async (buffer: Uint8Array) => {
     try {
       await window.electronAPI.pasteImage(task.id, buffer);
       await refreshTask();
-      await window.electronAPI.checkNecromancerBonus(task.id);
       toast.success('Image pasted');
     } catch (error) {
       console.error('Failed to paste image:', error);
@@ -124,7 +120,6 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     try {
       await window.electronAPI.attachFile(task.id, filePath);
       await refreshTask();
-      await window.electronAPI.checkNecromancerBonus(task.id);
       toast.success('File attached');
     } catch (error) {
       console.error('Failed to attach file:', error);
@@ -142,13 +137,10 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
           const uint8Array = new Uint8Array(arrayBuffer);
           await handleImagePaste(uint8Array);
         } else {
-          // For file input, we can't get the path directly in renderer
-          // Use file picker dialog instead
           toast.info('Please use the Attach button or drag & drop files');
         }
       }
     }
-    // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -185,7 +177,6 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     });
     setNewNote('');
     await refreshTask();
-    await window.electronAPI.checkNecromancerBonus(task.id);
     toast.success('Note added');
   };
 
@@ -217,7 +208,7 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
       const success = await window.electronAPI.deleteTask(task.id);
       if (success) {
         toast.success('Task deleted');
-        onBack(); // Go back to dashboard
+        onBack();
       } else {
         toast.error('Failed to delete task');
       }
@@ -320,7 +311,7 @@ Prices/quotes:`;
     return (
       <div 
         ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
-        className="p-4 bg-gray-800 rounded-lg border border-gray-700"
+        className="p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50"
       >
         <div className="text-sm text-gray-400 mb-2 flex items-center gap-2">
           <ImageIcon className="w-4 h-4" />
@@ -372,7 +363,7 @@ Prices/quotes:`;
     return (
       <div 
         ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
-        className="p-4 bg-gray-800 rounded-lg border border-gray-700"
+        className="p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50"
       >
         <div className="text-sm text-gray-400 mb-2 flex items-center gap-2">
           <FileText className="w-4 h-4" />
@@ -389,21 +380,21 @@ Prices/quotes:`;
           <div className="flex gap-1">
             <button
               onClick={() => handleFileAction(entry, 'open')}
-              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded transition-colors"
               title="Open"
             >
               <ExternalLink className="w-4 h-4" />
             </button>
             <button
               onClick={() => handleFileAction(entry, 'reveal')}
-              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded transition-colors"
               title="Reveal in folder"
             >
               <FolderOpen className="w-4 h-4" />
             </button>
             <button
               onClick={() => handleFileAction(entry, 'copy')}
-              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700 rounded transition-colors"
+              className="p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded transition-colors"
               title="Copy path"
             >
               <Copy className="w-4 h-4" />
@@ -420,7 +411,7 @@ Prices/quotes:`;
         return (
           <div 
             ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
-            className="p-4 bg-gray-800 rounded-lg border border-gray-700"
+            className="p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50"
           >
             <div className="text-sm text-gray-400 mb-2">{formatDateTime(entry.created_at)}</div>
             <div className="text-gray-200 whitespace-pre-wrap">{entry.content}</div>
@@ -434,7 +425,7 @@ Prices/quotes:`;
         return (
           <div 
             ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
-            className="p-4 bg-gray-800 rounded-lg border border-gray-700"
+            className="p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50"
           >
             <div className="text-sm text-gray-400">{formatDateTime(entry.created_at)}</div>
             <div className="text-gray-300 mt-1">Status changed: {entry.content}</div>
@@ -464,7 +455,7 @@ Prices/quotes:`;
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
-      <header className="border-b border-gray-800 px-6 py-4">
+      <header className="border-b border-gray-800/50 px-6 py-4 bg-gray-900/60 backdrop-blur-xl">
         <div className="flex items-center justify-between">
           <button
             onClick={onBack}
@@ -530,7 +521,7 @@ Prices/quotes:`;
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel */}
-        <div className="w-1/3 border-r border-gray-800 p-6 overflow-auto">
+        <div className="w-1/3 border-r border-gray-800/50 p-6 overflow-auto bg-gray-900/40 backdrop-blur-sm">
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-4">{task.title}</h1>
             
@@ -567,7 +558,7 @@ Prices/quotes:`;
                 <label className="text-sm text-gray-400">Idle Age</label>
                 <div className="mt-1 flex items-center gap-2">
                   {idleAge > 7 && <Ghost className={cn("w-4 h-4", getIdleAgeColor(idleAge))} />}
-                  <span className={cn("text-sm font-medium", getIdleAgeColor(idleAge))}>
+                  <span className={cn("text-sm font-medium font-mono", getIdleAgeColor(idleAge))}>
                     {idleAge === 0 ? 'Fresh' : idleAge === 1 ? '1 day' : `${idleAge} days`}
                   </span>
                 </div>
@@ -575,17 +566,17 @@ Prices/quotes:`;
               
               <div>
                 <label className="text-sm text-gray-400">Timeline Entries</label>
-                <div className="mt-1 text-sm text-gray-300">{timeline.length}</div>
+                <div className="mt-1 text-sm text-gray-300 font-mono">{timeline.length}</div>
               </div>
               
               <div>
                 <label className="text-sm text-gray-400">Created</label>
-                <div className="mt-1 text-sm text-gray-300">{formatDateTime(task.created_at)}</div>
+                <div className="mt-1 text-sm text-gray-300 font-mono">{formatDateTime(task.created_at)}</div>
               </div>
               
               <div>
                 <label className="text-sm text-gray-400">Last Touched</label>
-                <div className="mt-1 text-sm text-gray-300">{formatDateTime(task.last_touched_at)}</div>
+                <div className="mt-1 text-sm text-gray-300 font-mono">{formatDateTime(task.last_touched_at)}</div>
               </div>
             </div>
           </div>
@@ -620,7 +611,7 @@ Prices/quotes:`;
                   ref={summaryTextareaRef}
                   value={pinnedSummary}
                   onChange={(e) => setPinnedSummary(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+                  className="w-full px-3 py-2 bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 mb-2"
                   rows={6}
                 />
                 <div className="flex gap-2">
@@ -643,7 +634,7 @@ Prices/quotes:`;
                 </div>
               </div>
             ) : (
-              <div className="p-3 bg-gray-800 rounded-lg border border-gray-700 min-h-[120px]">
+              <div className="p-3 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50 min-h-[120px]">
                 {task.pinned_summary ? (
                   <div className="text-sm text-gray-300 whitespace-pre-wrap">{task.pinned_summary}</div>
                 ) : (
@@ -662,7 +653,7 @@ Prices/quotes:`;
 
         {/* Right Panel - Timeline */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="border-b border-gray-800 p-4">
+          <div className="border-b border-gray-800/50 p-4 bg-gray-900/40 backdrop-blur-sm">
             <div className="flex items-center gap-2 mb-3">
               <input
                 ref={noteInputRef}
@@ -675,7 +666,7 @@ Prices/quotes:`;
                     handleAddNote();
                   }
                 }}
-                className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="flex-1 px-4 py-2 bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               />
               <button
                 onClick={handleAddNote}

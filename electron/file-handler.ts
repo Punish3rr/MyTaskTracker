@@ -1,7 +1,13 @@
-// File and clipboard handling utilities
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, extname, basename } from 'path';
-import { app } from 'electron';
+﻿// File handling utilities for attachments
+import { app, shell, clipboard } from 'electron';
+import { join } from 'path';
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+
+export function getAttachmentAbsolutePath(relativePath: string): string {
+  const userDataPath = app.getPath('userData');
+  const attachmentsDir = join(userDataPath, 'taskvault', 'attachments');
+  return join(attachmentsDir, relativePath);
+}
 
 export async function processFileAttachment(taskId: string, filePath: string): Promise<string> {
   const userDataPath = app.getPath('userData');
@@ -11,21 +17,15 @@ export async function processFileAttachment(taskId: string, filePath: string): P
     mkdirSync(attachmentsDir, { recursive: true });
   }
 
-  const timestamp = Date.now();
-  const originalName = basename(filePath);
-  const ext = extname(originalName);
-  const sanitizedName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const safeFileName = `${timestamp}_${sanitizedName}`;
-  
-  const destPath = join(attachmentsDir, safeFileName);
-  
-  // Copy file
-  const { readFileSync } = await import('fs');
-  const fileBuffer = readFileSync(filePath);
-  writeFileSync(destPath, fileBuffer);
+  const filename = filePath.split(/[/\\]/).pop() || 'file';
+  const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const relativePath = `${taskId}/${safeFilename}`;
+  const absolutePath = getAttachmentAbsolutePath(relativePath);
 
-  // Return relative path: attachments/{taskId}/{filename}
-  return `attachments/${taskId}/${safeFileName}`;
+  const sourceBuffer = readFileSync(filePath);
+  writeFileSync(absolutePath, sourceBuffer);
+
+  return relativePath;
 }
 
 export async function processImagePaste(taskId: string, imageBuffer: Buffer): Promise<string> {
@@ -37,34 +37,32 @@ export async function processImagePaste(taskId: string, imageBuffer: Buffer): Pr
   }
 
   const timestamp = Date.now();
-  const fileName = `${timestamp}_paste.png`;
-  const destPath = join(attachmentsDir, fileName);
-  
-  writeFileSync(destPath, imageBuffer);
+  const relativePath = `${taskId}/paste_${timestamp}.png`;
+  const absolutePath = getAttachmentAbsolutePath(relativePath);
 
-  return `attachments/${taskId}/${fileName}`;
-}
-
-export function getAttachmentAbsolutePath(relativePath: string): string {
-  const userDataPath = app.getPath('userData');
-  return join(userDataPath, 'taskvault', relativePath);
+  writeFileSync(absolutePath, imageBuffer);
+  return relativePath;
 }
 
 export async function openAttachment(relativePath: string): Promise<void> {
-  const { shell } = await import('electron');
   const absolutePath = getAttachmentAbsolutePath(relativePath);
-  await shell.openPath(absolutePath);
+  if (existsSync(absolutePath)) {
+    await shell.openPath(absolutePath);
+  } else {
+    console.error('Attachment not found:', absolutePath);
+  }
 }
 
 export async function revealAttachment(relativePath: string): Promise<void> {
-  const { shell } = await import('electron');
   const absolutePath = getAttachmentAbsolutePath(relativePath);
-  const { dirname } = await import('path');
-  await shell.showItemInFolder(absolutePath);
+  if (existsSync(absolutePath)) {
+    await shell.showItemInFolder(absolutePath);
+  } else {
+    console.error('Attachment not found:', absolutePath);
+  }
 }
 
 export async function copyAttachmentPath(relativePath: string): Promise<void> {
-  const { clipboard } = await import('electron');
   const absolutePath = getAttachmentAbsolutePath(relativePath);
   clipboard.writeText(absolutePath);
 }

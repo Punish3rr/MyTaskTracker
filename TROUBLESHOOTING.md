@@ -76,3 +76,4 @@ Should output the API object, not `undefined`.
 3. **Check Electron version compatibility**:
    - Electron 28+ requires contextIsolation: true
    - Preload scripts must use contextBridge
+

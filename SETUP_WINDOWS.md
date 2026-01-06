@@ -121,3 +121,4 @@ Close any programs that might be locking files (VS Code, terminals, etc.) and tr
 2. Try: `npm cache clean --force`
 3. Delete `node_modules` folder and `package-lock.json`
 4. Run `npm install` again
+

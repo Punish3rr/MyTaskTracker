@@ -96,3 +96,4 @@ export async function checkNecromancerBonus(taskId: string): Promise<number> {
 
   return 0;
 }
+

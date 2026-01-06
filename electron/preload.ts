@@ -76,6 +76,10 @@ const electronAPI = {
   showFilePicker: (): Promise<string[]> => ipcRenderer.invoke('showFilePicker'),
   getImageDataUrl: (relativePath: string): Promise<string | null> => ipcRenderer.invoke('getImageDataUrl', relativePath),
   deleteTask: (taskId: string): Promise<boolean> => ipcRenderer.invoke('deleteTask', taskId),
+  onTasksUpdated: (callback: () => void) => {
+    ipcRenderer.on('tasks-updated', callback);
+    return () => ipcRenderer.removeListener('tasks-updated', callback);
+  },
 };
 
 try {

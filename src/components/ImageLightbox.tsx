@@ -84,3 +84,4 @@ export const ImageLightbox = ({ imagePath, onClose, onOpenExternal }: ImageLight
     </div>
   );
 };
+

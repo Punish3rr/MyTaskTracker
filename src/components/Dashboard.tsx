@@ -1,6 +1,8 @@
+// Dashboard component with event-driven updates, glassmorphism, and animations
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Search, Ghost, Image as ImageIcon, FileText, Trash2 } from 'lucide-react';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { Task } from '../../electron/preload';
 import { getIdleAgeColor, getIdleAgeBadge, cn } from '../lib/utils';
 import { GamificationWidget } from './GamificationWidget';
@@ -47,9 +49,18 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
 
   useEffect(() => {
     loadTasks();
-    const interval = setInterval(loadTasks, 5000);
-    return () => clearInterval(interval);
   }, [searchQuery]);
+
+  // Listen for tasks-updated events from main process
+  useEffect(() => {
+    if (!window.electronAPI) return;
+    
+    const unsubscribe = window.electronAPI.onTasksUpdated(() => {
+      loadTasks();
+    });
+    
+    return unsubscribe;
+  }, []);
 
   // Hotkeys
   useHotkeys('ctrl+k', (e) => {
@@ -116,7 +127,6 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
       toast.error('Failed to delete task');
     } finally {
       setDeleteConfirm({ isOpen: false, taskId: null });
-      // Restore focus to search input
       setTimeout(() => {
         searchInputRef.current?.focus();
       }, 100);
@@ -125,7 +135,6 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
 
   const handleDeleteCancel = () => {
     setDeleteConfirm({ isOpen: false, taskId: null });
-    // Restore focus to search input
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
@@ -133,8 +142,8 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'HIGH': return 'bg-red-500/20 text-red-400 border-red-500/30';
-      case 'NORMAL': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+      case 'HIGH': return 'bg-red-500/20 text-red-400 border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.3)]';
+      case 'NORMAL': return 'bg-blue-500/20 text-blue-400 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.3)]';
       case 'LOW': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
       default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
     }
@@ -142,9 +151,16 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'DONE': return 'bg-green-500/20 text-green-400 border-green-500/30';
+      case 'DONE': return 'bg-green-500/20 text-green-400 border-green-500/30 shadow-[0_0_8px_rgba(34,197,94,0.3)]';
       case 'ARCHIVED': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-      default: return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+      default: return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30 shadow-[0_0_8px_rgba(234,179,8,0.3)]';
+    }
+  };
+
+  const handleRowKeyDown = (e: React.KeyboardEvent, taskId: string) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onTaskSelect(taskId);
     }
   };
 
@@ -152,38 +168,48 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100 relative overflow-hidden">
       <ParticleBackground />
       <div className="relative z-10 h-full flex flex-col">
-      <header className="border-b border-gray-800 px-6 py-4 bg-gray-900/80 backdrop-blur-sm">
-        <div className="flex items-center justify-between mb-3">
-          <h1 className="text-2xl font-bold">TaskVault</h1>
-          <div className="flex items-center gap-4">
-            <GamificationWidget />
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+      <header className="border-b border-gray-800/50 px-6 py-4 bg-gray-900/60 backdrop-blur-xl backdrop-saturate-150 flex-shrink-0">
+        <div className="flex flex-row items-center justify-between w-full min-w-0 flex-nowrap">
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent flex-shrink-0 mr-4">
+            TaskVault
+          </h1>
+          <div className="flex flex-row items-center gap-4 flex-shrink-0 min-w-0 flex-nowrap">
+            <div className="flex-shrink-0">
+              <GamificationWidget />
+            </div>
+            <div className="relative flex-shrink-0">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
               <input
                 ref={searchInputRef}
                 type="text"
                 placeholder="Search tasks... (Ctrl+F)"
                 value={searchQuery}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                onInput={(e) => setSearchQuery((e.target as HTMLInputElement).value)}
-                className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4 py-2 bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all w-64"
                 autoComplete="off"
                 spellCheck="false"
               />
             </div>
             {!isCreating && (
-              <button
+              <motion.button
                 onClick={() => setIsCreating(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600/80 hover:bg-blue-700/80 rounded-lg transition-all shadow-[0_0_12px_rgba(59,130,246,0.4)] hover:shadow-[0_0_16px_rgba(59,130,246,0.6)] whitespace-nowrap flex-shrink-0"
               >
                 <Plus className="w-4 h-4" />
                 New Task
-              </button>
+              </motion.button>
             )}
           </div>
         </div>
         {isCreating && (
-          <div className="mt-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mt-4 p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50 shadow-lg"
+          >
             <input
               type="text"
               placeholder="Task title..."
@@ -197,42 +223,46 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                 }
               }}
               autoFocus
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 bg-gray-700/60 backdrop-blur-sm border border-gray-600/50 rounded-lg mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
             />
             <div className="flex items-center gap-2">
               <select
                 value={newTaskPriority}
                 onChange={(e) => setNewTaskPriority(e.target.value as 'LOW' | 'NORMAL' | 'HIGH')}
-                className="px-3 py-1 bg-gray-700 border border-gray-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-1 bg-gray-700/60 backdrop-blur-sm border border-gray-600/50 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all"
               >
                 <option value="LOW">Low Priority</option>
                 <option value="NORMAL">Normal Priority</option>
                 <option value="HIGH">High Priority</option>
               </select>
-              <button
+              <motion.button
                 onClick={handleCreateTask}
-                className="px-4 py-1 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm transition-colors"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-1 bg-blue-600/80 hover:bg-blue-700/80 rounded-lg text-sm transition-all shadow-[0_0_8px_rgba(59,130,246,0.3)]"
               >
                 Create
-              </button>
-              <button
+              </motion.button>
+              <motion.button
                 onClick={() => {
                   setIsCreating(false);
                   setNewTaskTitle('');
                 }}
-                className="px-4 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                className="px-4 py-1 bg-gray-700/60 hover:bg-gray-600/60 rounded-lg text-sm transition-all"
               >
                 Cancel
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         )}
       </header>
 
       <div className="flex-1 overflow-auto">
         <table className="w-full">
-          <thead className="bg-gray-800 sticky top-0">
-            <tr className="border-b border-gray-700">
+          <thead className="bg-gray-800/60 backdrop-blur-xl sticky top-0 z-20">
+            <tr className="border-b border-gray-700/50">
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Title</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Status</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Priority</th>
@@ -242,74 +272,84 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
             </tr>
           </thead>
           <tbody>
-            {tasks.map((task) => (
-              <tr
-                key={task.id}
-                onClick={(e) => {
-                  // Only navigate if click wasn't on a button or interactive element
-                  if ((e.target as HTMLElement).closest('button')) {
-                    return;
-                  }
-                  onTaskSelect(task.id);
-                }}
-                className="border-b border-gray-800 hover:bg-gray-800/50 cursor-pointer transition-colors"
-              >
-                <td className="px-6 py-4">
-                  <div className="flex items-center gap-2">
-                    {task.idleAge > 7 && (
-                      <Ghost className={cn("w-4 h-4", getIdleAgeColor(task.idleAge))} />
-                    )}
-                    <span className="font-medium">{task.title}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={cn("px-2 py-1 rounded text-xs border", getStatusColor(task.status))}>
-                    {task.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={cn("px-2 py-1 rounded text-xs border", getPriorityColor(task.priority))}>
-                    {task.priority}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  <span className={cn("text-sm font-medium", getIdleAgeColor(task.idleAge))}>
-                    {getIdleAgeBadge(task.idleAge)}
-                  </span>
-                </td>
-                <td className="px-6 py-4">
-                  {task.attachmentCount > 0 ? (
+            <AnimatePresence mode="popLayout">
+              {tasks.map((task) => (
+                <motion.tr
+                  key={task.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={(e) => {
+                    if ((e.target as HTMLElement).closest('button')) {
+                      return;
+                    }
+                    onTaskSelect(task.id);
+                  }}
+                  onKeyDown={(e) => handleRowKeyDown(e, task.id)}
+                  tabIndex={0}
+                  className="border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-all group relative"
+                  whileHover={{ scale: 1.01, backgroundColor: 'rgba(31, 41, 55, 0.4)' }}
+                >
+                  <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      {task.imageCount > 0 && (
-                        <div className="flex items-center gap-1 text-blue-400">
-                          <ImageIcon className="w-3 h-3" />
-                          <span className="text-xs">{task.imageCount}</span>
-                        </div>
+                      {task.idleAge > 7 && (
+                        <Ghost className={cn("w-4 h-4", getIdleAgeColor(task.idleAge))} />
                       )}
-                      {task.fileCount > 0 && (
-                        <div className="flex items-center gap-1 text-gray-400">
-                          <FileText className="w-3 h-3" />
-                          <span className="text-xs">{task.fileCount}</span>
-                        </div>
-                      )}
+                      <span className="font-medium">{task.title}</span>
                     </div>
-                  ) : (
-                    <span className="text-sm text-gray-500">—</span>
-                  )}
-                </td>
-                <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteClick(task.id, e)}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
-                    title="Delete task"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={cn("px-2 py-1 rounded text-xs border", getStatusColor(task.status))}>
+                      {task.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={cn("px-2 py-1 rounded text-xs border", getPriorityColor(task.priority))}>
+                      {task.priority}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={cn("text-sm font-medium font-mono", getIdleAgeColor(task.idleAge))}>
+                      {getIdleAgeBadge(task.idleAge)}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    {task.attachmentCount > 0 ? (
+                      <div className="flex items-center gap-2">
+                        {task.imageCount > 0 && (
+                          <div className="flex items-center gap-1 text-blue-400">
+                            <ImageIcon className="w-3 h-3" />
+                            <span className="text-xs font-mono">{task.imageCount}</span>
+                          </div>
+                        )}
+                        {task.fileCount > 0 && (
+                          <div className="flex items-center gap-1 text-gray-400">
+                            <FileText className="w-3 h-3" />
+                            <span className="text-xs font-mono">{task.fileCount}</span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-500">—</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                    <motion.button
+                      type="button"
+                      onClick={(e) => handleDeleteClick(task.id, e)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all"
+                      title="Delete task"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </motion.button>
+                  </td>
+                </motion.tr>
+              ))}
+            </AnimatePresence>
             {tasks.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-6 py-12 text-center text-gray-500">

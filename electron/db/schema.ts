@@ -34,3 +34,4 @@ export type NewTask = typeof tasks.$inferInsert;
 export type TimelineEntry = typeof timelineEntries.$inferSelect;
 export type NewTimelineEntry = typeof timelineEntries.$inferInsert;
 export type Gamification = typeof gamification.$inferSelect;
+
