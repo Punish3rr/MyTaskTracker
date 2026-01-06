@@ -10,6 +10,7 @@ import { CommandPalette } from './CommandPalette';
 import { ParticleBackground } from './ParticleBackground';
 import { ConfirmDialog } from './ConfirmDialog';
 import { EditTaskDialog } from './EditTaskDialog';
+import { TitleBar } from './TitleBar';
 import { toast } from './ui/toast';
 import { useDataUpdated } from '../hooks/useDataUpdated';
 
@@ -227,6 +228,7 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100 relative overflow-hidden">
       <ParticleBackground />
       <div className="relative z-10 h-full flex flex-col">
+      <TitleBar />
       <header className="border-b border-gray-800/50 px-6 py-4 bg-gray-900/60 backdrop-blur-xl backdrop-saturate-150 flex-shrink-0">
         <div className="flex flex-row items-center justify-between w-full min-w-0 flex-nowrap">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent flex-shrink-0 mr-4">

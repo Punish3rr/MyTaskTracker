@@ -58,7 +58,8 @@ function createWindow() {
       nodeIntegration: false,
       webSecurity: true,
     },
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#111827',
+    frame: process.platform === 'win32' ? false : true,
     show: false,
   });
 
@@ -73,9 +74,13 @@ function createWindow() {
     mainWindow.loadFile(htmlPath);
   }
 
-  // Fix Windows menu visibility
-  mainWindow.setAutoHideMenuBar(false);
-  mainWindow.setMenuBarVisibility(true);
+  // Fix Windows menu visibility - hide native menu bar on Windows when using custom title bar
+  if (process.platform === 'win32') {
+    mainWindow.setMenuBarVisibility(false);
+  } else {
+    mainWindow.setAutoHideMenuBar(false);
+    mainWindow.setMenuBarVisibility(true);
+  }
 
   // Create application menu
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -145,6 +150,16 @@ function createWindow() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+
+  // Add maximize/unmaximize event listeners for custom title bar
+  if (process.platform === 'win32') {
+    mainWindow.on('maximize', () => {
+      mainWindow?.webContents.send('window-maximized-changed', true);
+    });
+    mainWindow.on('unmaximize', () => {
+      mainWindow?.webContents.send('window-maximized-changed', false);
+    });
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
@@ -340,4 +355,25 @@ ipcMain.handle('getImageDataUrl', async (_event, relativePath: string) => {
     }
   }
   return null;
+});
+
+// Window control IPC handlers for custom title bar
+ipcMain.handle('window-minimize', () => {
+  mainWindow?.minimize();
+});
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow?.isMaximized()) {
+    mainWindow.unmaximize();
+  } else {
+    mainWindow?.maximize();
+  }
+});
+
+ipcMain.handle('window-close', () => {
+  mainWindow?.close();
+});
+
+ipcMain.handle('window-is-maximized', () => {
+  return mainWindow?.isMaximized() ?? false;
 });

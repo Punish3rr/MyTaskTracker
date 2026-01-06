@@ -91,6 +91,15 @@ const electronAPI = {
     ipcRenderer.on('data-updated', subscription);
     return () => ipcRenderer.removeListener('data-updated', subscription);
   },
+  windowMinimize: (): Promise<void> => ipcRenderer.invoke('window-minimize'),
+  windowMaximize: (): Promise<void> => ipcRenderer.invoke('window-maximize'),
+  windowClose: (): Promise<void> => ipcRenderer.invoke('window-close'),
+  windowIsMaximized: (): Promise<boolean> => ipcRenderer.invoke('window-is-maximized'),
+  onWindowMaximizedChanged: (callback: (isMaximized: boolean) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, isMaximized: boolean) => callback(isMaximized);
+    ipcRenderer.on('window-maximized-changed', subscription);
+    return () => ipcRenderer.removeListener('window-maximized-changed', subscription);
+  },
 };
 
 try {

@@ -34,6 +34,11 @@ declare global {
       getImageDataUrl: (relativePath: string) => Promise<string | null>;
       deleteTask: (taskId: string) => Promise<boolean>;
       onDataUpdated: (callback: (payload?: DataUpdatedPayload) => void) => () => void;
+      windowMinimize: () => Promise<void>;
+      windowMaximize: () => Promise<void>;
+      windowClose: () => Promise<void>;
+      windowIsMaximized: () => Promise<boolean>;
+      onWindowMaximizedChanged: (callback: (isMaximized: boolean) => void) => () => void;
     };
   }
 }
