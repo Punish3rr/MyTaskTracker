@@ -30,6 +30,10 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
   const [lightboxImagePath, setLightboxImagePath] = useState<string>('');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteAttachmentConfirm, setDeleteAttachmentConfirm] = useState<{ isOpen: boolean; entryId: string | null }>({
+    isOpen: false,
+    entryId: null,
+  });
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteContent, setEditingNoteContent] = useState<string>('');
   const [attachmentPaths, setAttachmentPaths] = useState<Record<string, string>>({});
@@ -316,6 +320,36 @@ Prices/quotes:`;
     }
   }, [refreshTask]);
 
+  const handleDeleteAttachmentClick = useCallback((entryId: string) => {
+    setDeleteAttachmentConfirm({ isOpen: true, entryId });
+  }, []);
+
+  const handleDeleteAttachmentConfirm = useCallback(async () => {
+    if (!deleteAttachmentConfirm.entryId) {
+      setDeleteAttachmentConfirm({ isOpen: false, entryId: null });
+      return;
+    }
+
+    try {
+      const success = await window.electronAPI.deleteTimelineEntry(deleteAttachmentConfirm.entryId);
+      if (success) {
+        await refreshTask();
+        toast.success('Attachment deleted');
+      } else {
+        toast.error('Failed to delete attachment');
+      }
+    } catch (error) {
+      console.error('Failed to delete attachment:', error);
+      toast.error('Failed to delete attachment');
+    } finally {
+      setDeleteAttachmentConfirm({ isOpen: false, entryId: null });
+    }
+  }, [deleteAttachmentConfirm.entryId, refreshTask]);
+
+  const handleDeleteAttachmentCancel = useCallback(() => {
+    setDeleteAttachmentConfirm({ isOpen: false, entryId: null });
+  }, []);
+
   // Memoize attachment entries for stable prop reference
   const attachmentEntries = useMemo(() => 
     timeline.filter(e => e.type === 'IMAGE' || e.type === 'FILE'),
@@ -336,11 +370,20 @@ Prices/quotes:`;
     return (
       <div 
         ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
-        className="p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50"
+        className="p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50 group"
       >
-        <div className="text-sm text-gray-400 mb-2 flex items-center gap-2">
-          <ImageIcon className="w-4 h-4" />
-          {formatDateTime(entry.created_at)}
+        <div className="text-sm text-gray-400 mb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="w-4 h-4" />
+            {formatDateTime(entry.created_at)}
+          </div>
+          <button
+            onClick={() => handleDeleteAttachmentClick(entry.id)}
+            className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700/50 rounded transition-colors opacity-0 group-hover:opacity-100"
+            title="Delete image"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
         {imageDataUrl && (
           <div className="mt-2">
@@ -423,6 +466,13 @@ Prices/quotes:`;
               title="Copy path"
             >
               <Copy className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => handleDeleteAttachmentClick(entry.id)}
+              className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700/50 rounded transition-colors"
+              title="Delete file"
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -808,6 +858,15 @@ Prices/quotes:`;
         cancelText="Cancel"
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
+      />
+      <ConfirmDialog
+        isOpen={deleteAttachmentConfirm.isOpen}
+        title="Delete Attachment"
+        message="Are you sure you want to delete this attachment? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        onConfirm={handleDeleteAttachmentConfirm}
+        onCancel={handleDeleteAttachmentCancel}
       />
     </div>
   );

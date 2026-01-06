@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { app } from 'electron';
+import { deleteAttachment } from '../file-handler';
 
 export interface TaskWithIdleAge {
   id: string;
@@ -261,6 +262,19 @@ export async function deleteTimelineEntry(entryId: string) {
   
   if (entry.length === 0) {
     return false;
+  }
+  
+  const timelineEntry = entry[0];
+  
+  // Delete physical file if entry is an IMAGE or FILE
+  if (timelineEntry.type === 'IMAGE' || timelineEntry.type === 'FILE') {
+    try {
+      await deleteAttachment(timelineEntry.content);
+    } catch (error) {
+      // Log error but continue with database deletion
+      // File might already be deleted or locked, but we still want to remove the DB entry
+      console.error(`Failed to delete attachment file for entry ${entryId}:`, error);
+    }
   }
   
   await db.delete(timelineEntries).where(eq(timelineEntries.id, entryId));

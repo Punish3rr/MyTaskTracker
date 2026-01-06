@@ -1,7 +1,7 @@
 // File handling utilities for attachments
 import { app, shell, clipboard } from 'electron';
 import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from 'fs';
 
 export function getAttachmentAbsolutePath(relativePath: string): string {
   const userDataPath = app.getPath('userData');
@@ -65,4 +65,16 @@ export async function revealAttachment(relativePath: string): Promise<void> {
 export async function copyAttachmentPath(relativePath: string): Promise<void> {
   const absolutePath = getAttachmentAbsolutePath(relativePath);
   clipboard.writeText(absolutePath);
+}
+
+export async function deleteAttachment(relativePath: string): Promise<void> {
+  const absolutePath = getAttachmentAbsolutePath(relativePath);
+  if (existsSync(absolutePath)) {
+    try {
+      unlinkSync(absolutePath);
+    } catch (error) {
+      console.error(`Failed to delete attachment ${relativePath}:`, error);
+      throw error;
+    }
+  }
 }
