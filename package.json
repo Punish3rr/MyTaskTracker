@@ -55,7 +55,9 @@
   "build": {
     "appId": "com.taskvault.app",
     "productName": "TaskVault",
-    "main": "dist-electron/electron/main.js",
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**/*",
       "dist-electron/electron/**/*",

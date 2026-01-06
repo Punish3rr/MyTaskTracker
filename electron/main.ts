@@ -66,7 +66,11 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(join(__dirname, '../dist/index.html'));
+    // In production, __dirname is in app.asar/dist-electron/electron
+    // We need to go up to app.asar and then into dist
+    const htmlPath = join(__dirname, '../../dist/index.html');
+    console.log('Loading HTML from:', htmlPath);
+    mainWindow.loadFile(htmlPath);
   }
 
   mainWindow.once('ready-to-show', () => {
