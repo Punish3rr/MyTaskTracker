@@ -12,9 +12,11 @@ export interface Task {
   delete_after_at: number | null;
   pinned_summary: string;
   idleAge: number;
+  daysOld: number;
   attachmentCount: number;
   imageCount: number;
   fileCount: number;
+  lastEntryAt: number | null;
 }
 
 export interface TimelineEntry {
@@ -36,6 +38,11 @@ export interface Gamification {
   level: number;
   streak: number;
   last_active_date: number;
+}
+
+export interface DataUpdatedPayload {
+  reason: string;
+  taskId?: string;
 }
 
 // Verify we're in the right context
@@ -76,9 +83,10 @@ const electronAPI = {
   showFilePicker: (): Promise<string[]> => ipcRenderer.invoke('showFilePicker'),
   getImageDataUrl: (relativePath: string): Promise<string | null> => ipcRenderer.invoke('getImageDataUrl', relativePath),
   deleteTask: (taskId: string): Promise<boolean> => ipcRenderer.invoke('deleteTask', taskId),
-  onTasksUpdated: (callback: () => void) => {
-    ipcRenderer.on('tasks-updated', callback);
-    return () => ipcRenderer.removeListener('tasks-updated', callback);
+  onDataUpdated: (callback: (payload?: DataUpdatedPayload) => void) => {
+    const subscription = (_event: Electron.IpcRendererEvent, payload?: DataUpdatedPayload) => callback(payload);
+    ipcRenderer.on('data-updated', subscription);
+    return () => ipcRenderer.removeListener('data-updated', subscription);
   },
 };
 

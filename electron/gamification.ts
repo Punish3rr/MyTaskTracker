@@ -1,8 +1,9 @@
-// Gamification logic and XP calculations
+﻿// Gamification logic and XP calculations
 import { getGamification, updateGamificationStats } from './db/queries';
 import { getTaskById } from './db/queries';
+import type { TimelineEntry } from './db/schema';
 
-export async function updateGamification(action: 'create_task' | 'add_content' | 'complete_task') {
+export async function updateGamification(action: 'create_task' | 'add_content' | 'complete_task' | 'delete_incomplete_task') {
   const stats = await getGamification();
   if (!stats) return;
 
@@ -23,6 +24,9 @@ export async function updateGamification(action: 'create_task' | 'add_content' |
       break;
     case 'complete_task':
       xp += 20;
+      break;
+    case 'delete_incomplete_task':
+      xp = Math.max(0, xp - 5); // Subtract 5 XP, but don't go below 0
       break;
   }
 
@@ -60,8 +64,8 @@ export async function checkNecromancerBonus(taskId: string): Promise<number> {
     // Check if necromancer bonus was already given for this neglect cycle
     const timeline = taskData.timeline;
     const lastGamifyEntry = timeline
-      .filter(e => e.type === 'GAMIFY')
-      .sort((a, b) => b.created_at - a.created_at)[0];
+      .filter((e: TimelineEntry) => e.type === 'GAMIFY')
+      .sort((a: TimelineEntry, b: TimelineEntry) => b.created_at - a.created_at)[0];
 
     if (lastGamifyEntry) {
       const lastGamifyAge = Math.floor((now - lastGamifyEntry.created_at) / 86400000);
@@ -96,4 +100,3 @@ export async function checkNecromancerBonus(taskId: string): Promise<number> {
 
   return 0;
 }
-

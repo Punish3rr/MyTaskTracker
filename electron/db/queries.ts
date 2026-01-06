@@ -18,16 +18,18 @@ export interface TaskWithIdleAge {
   delete_after_at: number | null;
   pinned_summary: string;
   idleAge: number;
+  daysOld: number;
   attachmentCount: number;
   imageCount: number;
   fileCount: number;
+  lastEntryAt: number | null;
 }
 
 export async function getTasks(): Promise<TaskWithIdleAge[]> {
   const db = getDatabase();
   const now = Date.now();
   
-  // Use LEFT JOIN with GROUP BY to efficiently count attachments in a single query
+  // Use LEFT JOIN with GROUP BY to efficiently count attachments and get last entry time in a single query
   const tasksWithCounts = await db
     .select({
       id: tasks.id,
@@ -42,26 +44,31 @@ export async function getTasks(): Promise<TaskWithIdleAge[]> {
       attachmentCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} IN ('IMAGE', 'FILE') THEN 1 END)`.as('attachmentCount'),
       imageCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} = 'IMAGE' THEN 1 END)`.as('imageCount'),
       fileCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} = 'FILE' THEN 1 END)`.as('fileCount'),
+      lastEntryAt: sql<number | null>`MAX(${timelineEntries.created_at})`.as('lastEntryAt'),
     })
     .from(tasks)
     .leftJoin(timelineEntries, eq(tasks.id, timelineEntries.task_id))
     .groupBy(tasks.id);
 
-  const tasksWithMetadata = tasksWithCounts.map(task => {
+  type TaskWithCounts = typeof tasksWithCounts[0];
+  const tasksWithMetadata: TaskWithIdleAge[] = tasksWithCounts.map((task: TaskWithCounts) => {
     const idleAge = Math.floor((now - task.last_touched_at) / 86400000);
+    const daysOld = Math.floor((now - task.created_at) / 86400000);
     
     return {
       ...task,
       idleAge,
+      daysOld,
       attachmentCount: task.attachmentCount || 0,
       imageCount: task.imageCount || 0,
       fileCount: task.fileCount || 0,
+      lastEntryAt: task.lastEntryAt || null,
     };
   });
 
   // Sort: Priority DESC (HIGH first), then Idle Age DESC
-  const priorityOrder = { HIGH: 3, NORMAL: 2, LOW: 1 };
-  tasksWithMetadata.sort((a, b) => {
+  const priorityOrder: Record<'HIGH' | 'NORMAL' | 'LOW', number> = { HIGH: 3, NORMAL: 2, LOW: 1 };
+  tasksWithMetadata.sort((a: TaskWithIdleAge, b: TaskWithIdleAge) => {
     const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
     if (priorityDiff !== 0) return priorityDiff;
     return b.idleAge - a.idleAge;
@@ -183,27 +190,43 @@ export async function searchTasks(query: string): Promise<TaskWithIdleAge[]> {
     .from(tasks)
     .where(like(tasks.title, searchPattern));
   
-  const matchingTaskIds = new Set(titleMatchingTasks.map(t => t.id));
+  type TaskRow = typeof titleMatchingTasks[0];
+  const matchingTaskIds = new Set<string>(titleMatchingTasks.map((t: TaskRow) => t.id));
   
-  // Search in timeline notes and attachment filenames
-  const allEntries = await db.select().from(timelineEntries);
-  const matchingEntries = allEntries.filter(e => {
-    if (e.type === 'NOTE') {
-      return e.content.toLowerCase().includes(queryLower);
-    }
-    if (e.type === 'IMAGE' || e.type === 'FILE') {
-      const filename = e.content.split('/').pop() || e.content;
-      return filename.toLowerCase().includes(queryLower);
-    }
-    return false;
-  });
-  matchingEntries.forEach(e => matchingTaskIds.add(e.task_id));
+  // Search in timeline notes using EXISTS subquery (scalable, doesn't load all entries)
+  const noteMatchingTasks = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(
+      sql`EXISTS (
+        SELECT 1 FROM ${timelineEntries} 
+        WHERE ${timelineEntries.task_id} = ${tasks.id} 
+        AND ${timelineEntries.type} = 'NOTE' 
+        AND LOWER(${timelineEntries.content}) LIKE ${`%${queryLower}%`}
+      )`
+    );
+  type TaskIdRow = { id: string };
+  noteMatchingTasks.forEach((t: TaskIdRow) => matchingTaskIds.add(t.id));
+  
+  // Search in attachment filenames using EXISTS subquery
+  const attachmentMatchingTasks = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(
+      sql`EXISTS (
+        SELECT 1 FROM ${timelineEntries} 
+        WHERE ${timelineEntries.task_id} = ${tasks.id} 
+        AND ${timelineEntries.type} IN ('IMAGE', 'FILE')
+        AND LOWER(${timelineEntries.content}) LIKE ${`%${queryLower}%`}
+      )`
+    );
+  attachmentMatchingTasks.forEach((t: TaskIdRow) => matchingTaskIds.add(t.id));
 
   if (matchingTaskIds.size === 0) {
     return [];
   }
 
-  // Use LEFT JOIN with GROUP BY to efficiently count attachments
+  // Use LEFT JOIN with GROUP BY to efficiently count attachments and get last entry time
   const tasksWithCounts = await db
     .select({
       id: tasks.id,
@@ -218,26 +241,31 @@ export async function searchTasks(query: string): Promise<TaskWithIdleAge[]> {
       attachmentCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} IN ('IMAGE', 'FILE') THEN 1 END)`.as('attachmentCount'),
       imageCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} = 'IMAGE' THEN 1 END)`.as('imageCount'),
       fileCount: sql<number>`COUNT(CASE WHEN ${timelineEntries.type} = 'FILE' THEN 1 END)`.as('fileCount'),
+      lastEntryAt: sql<number | null>`MAX(${timelineEntries.created_at})`.as('lastEntryAt'),
     })
     .from(tasks)
     .leftJoin(timelineEntries, eq(tasks.id, timelineEntries.task_id))
-    .where(or(...Array.from(matchingTaskIds).map(id => eq(tasks.id, id))))
+    .where(or(...Array.from(matchingTaskIds).map((id: string) => eq(tasks.id, id))))
     .groupBy(tasks.id);
 
-  const tasksWithMetadata = tasksWithCounts.map(task => {
+  type TaskWithCountsSearch = typeof tasksWithCounts[0];
+  const tasksWithMetadata: TaskWithIdleAge[] = tasksWithCounts.map((task: TaskWithCountsSearch) => {
     const idleAge = Math.floor((now - task.last_touched_at) / 86400000);
+    const daysOld = Math.floor((now - task.created_at) / 86400000);
     
     return {
       ...task,
       idleAge,
+      daysOld,
       attachmentCount: task.attachmentCount || 0,
       imageCount: task.imageCount || 0,
       fileCount: task.fileCount || 0,
+      lastEntryAt: task.lastEntryAt || null,
     };
   });
 
-  const priorityOrder = { HIGH: 3, NORMAL: 2, LOW: 1 };
-  tasksWithMetadata.sort((a, b) => {
+  const priorityOrder: Record<'HIGH' | 'NORMAL' | 'LOW', number> = { HIGH: 3, NORMAL: 2, LOW: 1 };
+  tasksWithMetadata.sort((a: TaskWithIdleAge, b: TaskWithIdleAge) => {
     const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
     if (priorityDiff !== 0) return priorityDiff;
     return b.idleAge - a.idleAge;
@@ -305,14 +333,16 @@ export async function cleanupExpiredTasks() {
   }
 }
 
-export async function deleteTask(taskId: string): Promise<boolean> {
+export async function deleteTask(taskId: string): Promise<{ success: boolean; wasIncomplete?: boolean }> {
   const db = getDatabase();
   
-  // Get task to verify it exists
+  // Get task to verify it exists and check status
   const task = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
   if (task.length === 0) {
-    return false;
+    return { success: false };
   }
+
+  const wasIncomplete = task[0].status !== 'DONE';
 
   // Delete timeline entries (cascade should handle this, but explicit is safer)
   await db.delete(timelineEntries).where(eq(timelineEntries.task_id, taskId));
@@ -331,5 +361,5 @@ export async function deleteTask(taskId: string): Promise<boolean> {
     console.error(`Failed to delete attachments for task ${taskId}:`, error);
   }
   
-  return true;
+  return { success: true, wasIncomplete };
 }

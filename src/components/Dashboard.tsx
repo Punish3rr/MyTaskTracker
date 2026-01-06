@@ -1,5 +1,5 @@
 // Dashboard component with event-driven updates, glassmorphism, and animations
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, Search, Ghost, Image as ImageIcon, FileText, Trash2 } from 'lucide-react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,6 +10,7 @@ import { CommandPalette } from './CommandPalette';
 import { ParticleBackground } from './ParticleBackground';
 import { ConfirmDialog } from './ConfirmDialog';
 import { toast } from './ui/toast';
+import { useDataUpdated } from '../hooks/useDataUpdated';
 
 interface DashboardProps {
   onTaskSelect: (taskId: string) => void;
@@ -28,7 +29,7 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
   });
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const loadTasks = async () => {
+  const loadTasks = useCallback(async () => {
     if (!window.electronAPI) {
       console.error('electronAPI is not available. Make sure the preload script is loaded.');
       return;
@@ -45,22 +46,14 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
     } catch (error) {
       console.error('Error loading tasks:', error);
     }
-  };
+  }, [searchQuery]);
 
   useEffect(() => {
     loadTasks();
-  }, [searchQuery]);
+  }, [loadTasks]);
 
-  // Listen for tasks-updated events from main process
-  useEffect(() => {
-    if (!window.electronAPI) return;
-    
-    const unsubscribe = window.electronAPI.onTasksUpdated(() => {
-      loadTasks();
-    });
-    
-    return unsubscribe;
-  }, []);
+  // Listen for data-updated events from main process using hook
+  useDataUpdated(loadTasks);
 
   // Hotkeys
   useHotkeys('ctrl+k', (e) => {
@@ -142,7 +135,7 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'HIGH': return 'bg-red-500/20 text-red-400 border-red-500/30 shadow-[0_0_8px_rgba(239,68,68,0.3)]';
+      case 'HIGH': return 'bg-red-500/20 text-red-400 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.5)]';
       case 'NORMAL': return 'bg-blue-500/20 text-blue-400 border-blue-500/30 shadow-[0_0_8px_rgba(59,130,246,0.3)]';
       case 'LOW': return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
       default: return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
@@ -266,18 +259,33 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Title</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Status</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Priority</th>
-              <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Idle Age</th>
+              <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Age</th>
+              <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Idle</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Attachments</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Actions</th>
             </tr>
           </thead>
-          <tbody>
+          <motion.tbody
+            variants={{
+              hidden: { opacity: 0 },
+              visible: {
+                opacity: 1,
+                transition: {
+                  staggerChildren: 0.05,
+                },
+              },
+            }}
+            initial="hidden"
+            animate="visible"
+          >
             <AnimatePresence mode="popLayout">
-              {tasks.map((task) => (
+              {tasks.slice(0, 50).map((task, index) => (
                 <motion.tr
                   key={task.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  variants={{
+                    hidden: { opacity: 0, y: 8 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.2 }}
                   onClick={(e) => {
@@ -288,7 +296,7 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                   }}
                   onKeyDown={(e) => handleRowKeyDown(e, task.id)}
                   tabIndex={0}
-                  className="border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-all group relative"
+                  className="border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-all group relative glass-panel"
                   whileHover={{ scale: 1.01, backgroundColor: 'rgba(31, 41, 55, 0.4)' }}
                 >
                   <td className="px-6 py-4">
@@ -307,6 +315,11 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                   <td className="px-6 py-4">
                     <span className={cn("px-2 py-1 rounded text-xs border", getPriorityColor(task.priority))}>
                       {task.priority}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className="text-sm font-medium font-mono text-gray-400">
+                      {task.daysOld === 0 ? 'Today' : task.daysOld === 1 ? '1 day' : `${task.daysOld} days`}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -349,15 +362,26 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                   </td>
                 </motion.tr>
               ))}
+              {tasks.length > 50 && (
+                <motion.tr
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="border-b border-gray-800/50"
+                >
+                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500 text-sm">
+                    Showing first 50 tasks. Use search to find more.
+                  </td>
+                </motion.tr>
+              )}
             </AnimatePresence>
             {tasks.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                   {searchQuery ? 'No tasks found' : 'No tasks yet. Create your first task!'}
                 </td>
               </tr>
             )}
-          </tbody>
+          </motion.tbody>
         </table>
       </div>
       </div>

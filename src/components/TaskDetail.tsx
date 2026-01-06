@@ -521,7 +521,7 @@ Prices/quotes:`;
 
       <div className="flex-1 flex overflow-hidden">
         {/* Left Panel */}
-        <div className="w-1/3 border-r border-gray-800/50 p-6 overflow-auto bg-gray-900/40 backdrop-blur-sm">
+        <div className="w-1/3 border-r border-gray-800/50 p-6 overflow-auto glass-panel">
           <div className="mb-6">
             <h1 className="text-2xl font-bold mb-4">{task.title}</h1>
             

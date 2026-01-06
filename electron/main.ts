@@ -1,5 +1,6 @@
 // Main process entry point for TaskVault Electron application
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { EventEmitter } from 'events';
 import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { initDatabase } from './db/client';
@@ -21,10 +22,17 @@ let cleanupInterval: NodeJS.Timeout | null = null;
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
-// Helper function to emit tasks-updated event to renderer
-function emitTasksUpdated() {
+// Centralized EventEmitter for data updates
+const dataUpdateEmitter = new EventEmitter();
+
+// Helper function to emit data-updated event to renderer
+function emitDataUpdated(payload?: { reason: string; taskId?: string }) {
+  // Emit on EventEmitter for internal listeners (if needed)
+  dataUpdateEmitter.emit('data-updated', payload);
+  
+  // Broadcast to all renderer windows
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('tasks-updated');
+    mainWindow.webContents.send('data-updated', payload);
   }
 }
 
@@ -116,7 +124,7 @@ ipcMain.handle('getTaskById', async (_event, id: string) => {
 ipcMain.handle('createTask', async (_event, payload: { title: string; priority: string }) => {
   const task = await createTask(payload);
   await updateGamification('create_task');
-  emitTasksUpdated();
+  emitDataUpdated({ reason: 'task_created', taskId: task.id });
   return task;
 });
 
@@ -136,7 +144,7 @@ ipcMain.handle('updateTask', async (_event, payload: {
   if (payload.pinned_summary !== undefined && payload.updateTouched) {
     await checkNecromancerBonus(payload.id);
   }
-  emitTasksUpdated();
+  emitDataUpdated({ reason: 'task_updated', taskId: payload.id });
   return task;
 });
 
@@ -157,7 +165,7 @@ ipcMain.handle('addTimelineEntry', async (_event, payload: {
     await updateGamification('add_content');
   }
   
-  emitTasksUpdated();
+  emitDataUpdated({ reason: 'timeline_entry_added', taskId: payload.taskId });
   return entry;
 });
 
@@ -171,7 +179,7 @@ ipcMain.handle('attachFile', async (_event, taskId: string, filePath: string) =>
   });
   await updateGamification('add_content');
   await checkNecromancerBonus(taskId);
-  emitTasksUpdated();
+  emitDataUpdated({ reason: 'file_attached', taskId });
   return relativePath;
 });
 
@@ -186,7 +194,7 @@ ipcMain.handle('pasteImage', async (_event, taskId: string, imageBuffer: Uint8Ar
   });
   await updateGamification('add_content');
   await checkNecromancerBonus(taskId);
-  emitTasksUpdated();
+  emitDataUpdated({ reason: 'image_pasted', taskId });
   return relativePath;
 });
 
@@ -229,10 +237,14 @@ ipcMain.handle('copyAttachmentPath', async (_event, relativePath: string) => {
 
 ipcMain.handle('deleteTask', async (_event, taskId: string) => {
   const result = await deleteTask(taskId);
-  if (result) {
-    emitTasksUpdated();
+  if (result.success) {
+    // If task was incomplete, subtract XP
+    if (result.wasIncomplete) {
+      await updateGamification('delete_incomplete_task');
+    }
+    emitDataUpdated({ reason: 'task_deleted', taskId });
   }
-  return result;
+  return result.success;
 });
 
 // Get image as data URL (base64) for secure loading

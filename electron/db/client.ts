@@ -1,4 +1,4 @@
-// Database client singleton using better-sqlite3
+﻿// Database client singleton using better-sqlite3
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
@@ -76,7 +76,11 @@ export async function initDatabase() {
     );
 
     CREATE INDEX IF NOT EXISTS idx_timeline_task_id ON timeline_entries(task_id);
+    CREATE INDEX IF NOT EXISTS idx_timeline_type ON timeline_entries(type);
+    CREATE INDEX IF NOT EXISTS idx_timeline_created_at ON timeline_entries(created_at);
     CREATE INDEX IF NOT EXISTS idx_tasks_last_touched ON tasks(last_touched_at);
+    CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+    CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
   `);
 
   // Initialize gamification if not exists
@@ -97,4 +101,3 @@ export function closeDatabase() {
     dbInstance = null;
   }
 }
-

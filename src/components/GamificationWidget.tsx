@@ -1,27 +1,25 @@
 // Gamification stats widget with animated XP bar
 import { Trophy, Zap, Flame } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import type { Gamification } from '../../electron/preload';
+import { useDataUpdated } from '../hooks/useDataUpdated';
 
 export const GamificationWidget = () => {
   const [stats, setStats] = useState<Gamification | null>(null);
 
-  useEffect(() => {
-    const loadStats = async () => {
-      if (!window.electronAPI) return;
-      const data = await window.electronAPI.getGamification();
-      setStats(data);
-    };
-    loadStats();
-    // Listen for tasks-updated events to refresh stats
-    if (window.electronAPI) {
-      const unsubscribe = window.electronAPI.onTasksUpdated(() => {
-        loadStats();
-      });
-      return unsubscribe;
-    }
+  const loadStats = useCallback(async () => {
+    if (!window.electronAPI) return;
+    const data = await window.electronAPI.getGamification();
+    setStats(data);
   }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  // Listen for data-updated events to refresh stats
+  useDataUpdated(loadStats);
 
   if (!stats) return null;
 
@@ -38,7 +36,7 @@ export const GamificationWidget = () => {
         <span className="text-sm font-mono">{stats.xp} XP</span>
         <div className="w-20 h-1.5 bg-gray-700/50 rounded-full overflow-hidden relative">
           <motion.div 
-            className="h-full bg-gradient-to-r from-blue-500 to-purple-500 relative"
+            className="h-full bg-gradient-to-r from-cyan-400 to-purple-500 relative"
             initial={{ width: 0 }}
             animate={{ width: `${xpProgress}%` }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
