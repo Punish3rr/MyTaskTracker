@@ -235,6 +235,38 @@ export async function addTimelineEntry(payload: {
   return entry;
 }
 
+export async function updateTimelineEntry(entryId: string, content: string) {
+  const db = getDatabase();
+  await db
+    .update(timelineEntries)
+    .set({ content })
+    .where(eq(timelineEntries.id, entryId));
+  
+  const updated = await db
+    .select()
+    .from(timelineEntries)
+    .where(eq(timelineEntries.id, entryId))
+    .limit(1);
+  
+  return updated[0] || null;
+}
+
+export async function deleteTimelineEntry(entryId: string) {
+  const db = getDatabase();
+  const entry = await db
+    .select()
+    .from(timelineEntries)
+    .where(eq(timelineEntries.id, entryId))
+    .limit(1);
+  
+  if (entry.length === 0) {
+    return false;
+  }
+  
+  await db.delete(timelineEntries).where(eq(timelineEntries.id, entryId));
+  return true;
+}
+
 export async function searchTasks(query: string): Promise<TaskWithMeta[]> {
   const db = getDatabase();
   const now = Date.now();

@@ -21,6 +21,8 @@ interface DashboardProps {
 export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
   const [isCreating, setIsCreating] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'LOW' | 'NORMAL' | 'HIGH'>('NORMAL');
@@ -33,7 +35,16 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
     isOpen: false,
     task: null,
   });
+  const [imagePreviews, setImagePreviews] = useState<Record<string, string>>({});
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Debounce search query (200ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const loadTasks = useCallback(async () => {
     if (!window.electronAPI) {
@@ -42,17 +53,42 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
     }
     
     try {
-      if (searchQuery.trim()) {
-        const results = await window.electronAPI.searchTasks(searchQuery);
-        setTasks(results);
+      let allTasks: Task[];
+      if (debouncedSearchQuery.trim()) {
+        allTasks = await window.electronAPI.searchTasks(debouncedSearchQuery);
       } else {
-        const allTasks = await window.electronAPI.getTasks();
-        setTasks(allTasks);
+        allTasks = await window.electronAPI.getTasks();
+      }
+      
+      // Filter tasks based on active tab
+      const filteredTasks = activeTab === 'active'
+        ? allTasks.filter(t => ['OPEN', 'WAITING', 'BLOCKED'].includes(t.status))
+        : allTasks.filter(t => ['DONE', 'ARCHIVED'].includes(t.status));
+      
+      setTasks(filteredTasks);
+      
+      // Load image previews for tasks with image entries
+      const imageTasks = filteredTasks.filter(t => t.latestEntryType === 'IMAGE' && t.latestEntryContent);
+      const newPreviews: Record<string, string> = {};
+      for (const task of imageTasks) {
+        if (!imagePreviews[task.latestEntryContent!] && task.latestEntryContent) {
+          try {
+            const dataUrl = await window.electronAPI.getImageDataUrl(task.latestEntryContent);
+            if (dataUrl) {
+              newPreviews[task.latestEntryContent] = dataUrl;
+            }
+          } catch (error) {
+            console.error('Failed to load image preview:', error);
+          }
+        }
+      }
+      if (Object.keys(newPreviews).length > 0) {
+        setImagePreviews(prev => ({ ...prev, ...newPreviews }));
       }
     } catch (error) {
       console.error('Error loading tasks:', error);
     }
-  }, [searchQuery]);
+  }, [debouncedSearchQuery, activeTab]);
 
   useEffect(() => {
     loadTasks();
@@ -321,6 +357,34 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
       </header>
 
       <div className="flex-1 overflow-auto">
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-800/50 px-6 py-3 bg-gray-900/60 backdrop-blur-xl">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('active')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                activeTab === 'active'
+                  ? "bg-blue-600/80 text-white shadow-[0_0_8px_rgba(59,130,246,0.3)]"
+                  : "bg-gray-800/60 text-gray-400 hover:bg-gray-700/60 hover:text-gray-300"
+              )}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => setActiveTab('completed')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                activeTab === 'completed'
+                  ? "bg-blue-600/80 text-white shadow-[0_0_8px_rgba(59,130,246,0.3)]"
+                  : "bg-gray-800/60 text-gray-400 hover:bg-gray-700/60 hover:text-gray-300"
+              )}
+            >
+              Completed
+            </button>
+          </div>
+        </div>
+
         <table className="w-full">
           <thead className="bg-gray-800/60 backdrop-blur-xl sticky top-0 z-20">
             <tr className="border-b border-gray-700/50">
@@ -329,7 +393,7 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Priority</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Age</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Idle</th>
-              <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Attachments</th>
+              <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Last Entry</th>
               <th className="text-left px-6 py-3 text-sm font-semibold text-gray-300">Actions</th>
             </tr>
           </thead>
@@ -364,7 +428,10 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                   }}
                   onKeyDown={(e) => handleRowKeyDown(e, task.id)}
                   tabIndex={0}
-                  className="border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-all group relative glass-panel"
+                  className={cn(
+                    "border-b border-gray-800/50 hover:bg-gray-800/40 cursor-pointer transition-all group relative glass-panel",
+                    task.status === 'BLOCKED' && "animate-pulse"
+                  )}
                   whileHover={{ scale: 1.01, backgroundColor: 'rgba(31, 41, 55, 0.4)' }}
                 >
                   <td className="px-6 py-4">
@@ -410,8 +477,23 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                           )}
                           {task.latestEntryType === 'IMAGE' && (
                             <>
-                              <ImageIcon className="w-3 h-3 text-blue-400" />
-                              <span className="text-gray-400 text-xs">Image</span>
+                              {imagePreviews[task.latestEntryContent || ''] ? (
+                                <img
+                                  src={imagePreviews[task.latestEntryContent || '']}
+                                  alt="Preview"
+                                  className="object-cover rounded border border-gray-700/50 hover:border-blue-500/50 transition-colors cursor-pointer"
+                                  style={{ maxWidth: '60px', maxHeight: '40px' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onTaskSelect(task.id);
+                                  }}
+                                />
+                              ) : (
+                                <>
+                                  <ImageIcon className="w-3 h-3 text-blue-400" />
+                                  <span className="text-gray-400 text-xs">Image</span>
+                                </>
+                              )}
                             </>
                           )}
                           {task.latestEntryType === 'FILE' && (
@@ -430,26 +512,6 @@ export const Dashboard = ({ onTaskSelect }: DashboardProps) => {
                           <span className="text-xs text-gray-500 font-mono">
                             {formatRelativeTime(task.latestEntryDate)}
                           </span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-500">—</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    {task.attachmentCount > 0 ? (
-                      <div className="flex items-center gap-2">
-                        {task.imageCount > 0 && (
-                          <div className="flex items-center gap-1 text-blue-400">
-                            <ImageIcon className="w-3 h-3" />
-                            <span className="text-xs font-mono">{task.imageCount}</span>
-                          </div>
-                        )}
-                        {task.fileCount > 0 && (
-                          <div className="flex items-center gap-1 text-gray-400">
-                            <FileText className="w-3 h-3" />
-                            <span className="text-xs font-mono">{task.fileCount}</span>
-                          </div>
                         )}
                       </div>
                     ) : (

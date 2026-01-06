@@ -21,6 +21,8 @@ declare global {
         content: string;
         updateTouched?: boolean;
       }) => Promise<TimelineEntry>;
+      updateTimelineEntry: (entryId: string, content: string) => Promise<TimelineEntry | null>;
+      deleteTimelineEntry: (entryId: string) => Promise<boolean>;
       attachFile: (taskId: string, filePath: string) => Promise<string>;
       pasteImage: (taskId: string, imageBuffer: Uint8Array) => Promise<string>;
       searchTasks: (query: string) => Promise<Task[]>;

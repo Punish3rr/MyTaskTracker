@@ -1,9 +1,8 @@
 // Task detail view with attachment gallery, enhanced timeline, smart functions
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  ArrowLeft, Save, Paperclip, Image as ImageIcon, FileText, CheckCircle, Archive, Trash2,
-  ExternalLink, FolderOpen, Copy, Ghost, AlertTriangle, Sparkles, FileEdit,
-  Phone, DollarSign, Truck, Clock
+  ArrowLeft, Save, Image as ImageIcon, FileText, CheckCircle, Archive, Trash2,
+  ExternalLink, FolderOpen, Copy, Ghost, AlertTriangle, Sparkles, FileEdit
 } from 'lucide-react';
 import { useHotkeys } from 'react-hotkeys-hook';
 import type { TaskDetail as TaskDetailType, TimelineEntry } from '../../electron/preload';
@@ -12,6 +11,7 @@ import { AttachmentGallery } from './AttachmentGallery';
 import { ImageLightbox } from './ImageLightbox';
 import { CommandPalette } from './CommandPalette';
 import { ConfirmDialog } from './ConfirmDialog';
+import { NewNoteComposer } from './NewNoteComposer';
 import { toast } from './ui/toast';
 
 interface TaskDetailProps {
@@ -25,16 +25,15 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
   const [timeline, setTimeline] = useState(taskDetail.timeline);
   const [pinnedSummary, setPinnedSummary] = useState(task.pinned_summary);
   const [isEditingSummary, setIsEditingSummary] = useState(false);
-  const [newNote, setNewNote] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [lightboxImagePath, setLightboxImagePath] = useState<string>('');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState<string>('');
   const [attachmentPaths, setAttachmentPaths] = useState<Record<string, string>>({});
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
-  const noteInputRef = useRef<HTMLInputElement>(null);
   const summaryTextareaRef = useRef<HTMLTextAreaElement>(null);
   const timelineRefs = useRef<Record<string, HTMLDivElement>>({});
 
@@ -100,10 +99,7 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     e.preventDefault();
     setIsCommandPaletteOpen(true);
   });
-  useHotkeys('ctrl+enter', (e) => {
-    e.preventDefault();
-    handleAddNote();
-  });
+  // Note: Ctrl+Enter handled by NewNoteComposer component
 
   const handleImagePaste = async (buffer: Uint8Array) => {
     try {
@@ -116,7 +112,7 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     }
   };
 
-  const handleFileAttach = async (filePath: string) => {
+  const handleFileAttach = useCallback(async (filePath: string) => {
     try {
       await window.electronAPI.attachFile(task.id, filePath);
       await refreshTask();
@@ -125,28 +121,21 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
       console.error('Failed to attach file:', error);
       toast.error('Failed to attach file');
     }
-  };
+  }, [task.id]);
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.type.startsWith('image/')) {
-          const arrayBuffer = await file.arrayBuffer();
-          const uint8Array = new Uint8Array(arrayBuffer);
-          await handleImagePaste(uint8Array);
-        } else {
-          toast.info('Please use the Attach button or drag & drop files');
-        }
+  const handleFilePicker = useCallback(async () => {
+    try {
+      const filePaths = await window.electronAPI.showFilePicker();
+      for (const filePath of filePaths) {
+        await handleFileAttach(filePath);
       }
+    } catch (error) {
+      console.error('File picker failed:', error);
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
+  }, [handleFileAttach]);
 
-  const refreshTask = async () => {
+
+  const refreshTask = useCallback(async () => {
     const updated = await window.electronAPI.getTaskById(task.id);
     if (updated) {
       setTask(updated.task);
@@ -154,7 +143,7 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
       setPinnedSummary(updated.task.pinned_summary);
       onUpdate();
     }
-  };
+  }, [task.id, onUpdate]);
 
   const handleSaveSummary = async () => {
     await window.electronAPI.updateTask({
@@ -167,18 +156,17 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     toast.success('Summary saved');
   };
 
-  const handleAddNote = async () => {
-    if (!newNote.trim()) return;
+  const handleAddNote = useCallback(async (content: string) => {
+    if (!content.trim()) return;
     await window.electronAPI.addTimelineEntry({
       taskId: task.id,
       type: 'NOTE',
-      content: newNote,
+      content,
       updateTouched: true,
     });
-    setNewNote('');
     await refreshTask();
     toast.success('Note added');
-  };
+  }, [task.id, refreshTask]);
 
   const handleStatusChange = async (status: 'OPEN' | 'WAITING' | 'BLOCKED' | 'DONE' | 'ARCHIVED') => {
     await window.electronAPI.updateTask({
@@ -224,12 +212,12 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     setShowDeleteConfirm(false);
   };
 
-  const getAttachmentPath = async (relativePath: string): Promise<string> => {
+  const getAttachmentPath = useCallback(async (relativePath: string): Promise<string> => {
     if (attachmentPaths[relativePath]) return attachmentPaths[relativePath];
     const absolutePath = await window.electronAPI.getAttachmentPath(relativePath);
     setAttachmentPaths(prev => ({ ...prev, [relativePath]: absolutePath }));
     return absolutePath;
-  };
+  }, [attachmentPaths]);
 
   const handleOpenImage = async (entry: TimelineEntry) => {
     const dataUrl = await window.electronAPI.getImageDataUrl(entry.content);
@@ -263,17 +251,9 @@ export const TaskDetail = ({ taskDetail, onBack, onUpdate }: TaskDetailProps) =>
     }
   };
 
-  const insertNotePreset = (preset: string) => {
-    const presets: Record<string, string> = {
-      update: 'Update: ',
-      call: 'Call: ',
-      quote: 'Quote: $',
-      shipping: 'Shipping: ',
-      waiting: 'Waiting on: ',
-    };
-    setNewNote(presets[preset] || '');
-    noteInputRef.current?.focus();
-  };
+  const insertNotePreset = useCallback((_preset: string) => {
+    // Preset insertion is handled by NewNoteComposer
+  }, []);
 
   const insertSummaryTemplate = () => {
     const template = `Goal:
@@ -286,7 +266,7 @@ Prices/quotes:`;
     summaryTextareaRef.current?.focus();
   };
 
-  const scrollToTimelineEntry = (entryId: string) => {
+  const scrollToTimelineEntry = useCallback((entryId: string) => {
     const element = timelineRefs.current[entryId];
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -295,7 +275,52 @@ Prices/quotes:`;
         element.classList.remove('ring-2', 'ring-blue-500');
       }, 2000);
     }
-  };
+  }, []);
+
+  const handleEditNote = useCallback((entry: TimelineEntry) => {
+    setEditingNoteId(entry.id);
+    setEditingNoteContent(entry.content);
+  }, []);
+
+  const handleSaveNote = useCallback(async () => {
+    if (!editingNoteId || !editingNoteContent.trim()) return;
+    try {
+      await window.electronAPI.updateTimelineEntry(editingNoteId, editingNoteContent.trim());
+      await refreshTask();
+      setEditingNoteId(null);
+      setEditingNoteContent('');
+      toast.success('Note updated');
+    } catch (error) {
+      console.error('Failed to update note:', error);
+      toast.error('Failed to update note');
+    }
+  }, [editingNoteId, editingNoteContent, refreshTask]);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingNoteId(null);
+    setEditingNoteContent('');
+  }, []);
+
+  const handleDeleteNote = useCallback(async (entryId: string) => {
+    try {
+      const success = await window.electronAPI.deleteTimelineEntry(entryId);
+      if (success) {
+        await refreshTask();
+        toast.success('Note deleted');
+      } else {
+        toast.error('Failed to delete note');
+      }
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+      toast.error('Failed to delete note');
+    }
+  }, [refreshTask]);
+
+  // Memoize attachment entries for stable prop reference
+  const attachmentEntries = useMemo(() => 
+    timeline.filter(e => e.type === 'IMAGE' || e.type === 'FILE'),
+    [timeline]
+  );
 
   const ImageEntry = ({ entry }: { entry: TimelineEntry }) => {
     const [imageDataUrl, setImageDataUrl] = useState<string>('');
@@ -408,13 +433,69 @@ Prices/quotes:`;
   const renderTimelineEntry = (entry: TimelineEntry) => {
     switch (entry.type) {
       case 'NOTE':
+        const isEditing = editingNoteId === entry.id;
         return (
           <div 
             ref={(el) => { if (el) timelineRefs.current[entry.id] = el; }}
-            className="p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50"
+            className="p-4 bg-gray-800/60 backdrop-blur-sm rounded-lg border border-gray-700/50 group"
           >
-            <div className="text-sm text-gray-400 mb-2">{formatDateTime(entry.created_at)}</div>
-            <div className="text-gray-200 whitespace-pre-wrap">{entry.content}</div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm text-gray-400">{formatDateTime(entry.created_at)}</div>
+              {!isEditing && (
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => handleEditNote(entry)}
+                    className="p-1.5 text-gray-400 hover:text-blue-400 hover:bg-gray-700/50 rounded transition-colors"
+                    title="Edit note"
+                  >
+                    <FileEdit className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteNote(entry.id)}
+                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-700/50 rounded transition-colors"
+                    title="Delete note"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+            {isEditing ? (
+              <div className="space-y-2">
+                <textarea
+                  value={editingNoteContent}
+                  onChange={(e) => setEditingNoteContent(e.target.value)}
+                  className="w-full px-3 py-2 bg-gray-700/60 border border-gray-600/50 rounded-lg text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none"
+                  rows={4}
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      handleCancelEdit();
+                    } else if (e.key === 'Enter' && e.ctrlKey) {
+                      e.preventDefault();
+                      handleSaveNote();
+                    }
+                  }}
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveNote}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm transition-colors flex items-center gap-1"
+                  >
+                    <Save className="w-3 h-3" />
+                    Save
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-gray-200 whitespace-pre-wrap">{entry.content}</div>
+            )}
           </div>
         );
       case 'IMAGE':
@@ -449,9 +530,7 @@ Prices/quotes:`;
     }
   };
 
-  const attachments = timeline.filter(e => e.type === 'IMAGE' || e.type === 'FILE');
-  const imageCount = timeline.filter(e => e.type === 'IMAGE').length;
-  const fileCount = timeline.filter(e => e.type === 'FILE').length;
+  // Attachment counts are now handled by AttachmentGallery component
 
   return (
     <div className="h-screen flex flex-col bg-gray-900 text-gray-100">
@@ -498,7 +577,7 @@ Prices/quotes:`;
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => noteInputRef.current?.focus()}
+              onClick={() => {}}
               className="px-2 py-1 text-xs bg-red-600/20 text-red-400 border border-red-600/30 rounded hover:bg-red-600/30"
             >
               Add Note
@@ -546,14 +625,15 @@ Prices/quotes:`;
               <div>
                 <label className="text-sm text-gray-400">Priority</label>
                 <div className="mt-1">
-                  <span className={cn(
-                    "px-2 py-1 rounded text-xs border",
-                    task.priority === 'HIGH' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
-                    task.priority === 'NORMAL' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                    'bg-gray-500/20 text-gray-400 border-gray-500/30'
-                  )}>
-                    {task.priority}
-                  </span>
+                  <select
+                    value={task.priority}
+                    onChange={(e) => handlePriorityChange(e.target.value as 'LOW' | 'NORMAL' | 'HIGH')}
+                    className="w-full px-3 py-1.5 bg-gray-800/60 border border-gray-700/50 rounded-lg text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  >
+                    <option value="LOW">Low</option>
+                    <option value="NORMAL">Normal</option>
+                    <option value="HIGH">High</option>
+                  </select>
                 </div>
               </div>
               
@@ -648,7 +728,7 @@ Prices/quotes:`;
           </div>
 
           <AttachmentGallery
-            timeline={timeline}
+            timeline={attachmentEntries}
             onSelectAttachment={(entry) => scrollToTimelineEntry(entry.id)}
             getAttachmentPath={getAttachmentPath}
           />
@@ -656,91 +736,12 @@ Prices/quotes:`;
 
         {/* Right Panel - Timeline */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="border-b border-gray-800/50 p-4 bg-gray-900/40 backdrop-blur-sm">
-            <div className="flex items-center gap-2 mb-3">
-              <input
-                ref={noteInputRef}
-                type="text"
-                placeholder="Add a note... (Ctrl+Enter)"
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && e.ctrlKey) {
-                    handleAddNote();
-                  }
-                }}
-                className="flex-1 px-4 py-2 bg-gray-800/60 backdrop-blur-sm border border-gray-700/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              />
-              <button
-                onClick={handleAddNote}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
-              >
-                Add Note
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              <button
-                onClick={async () => {
-                  try {
-                    const filePaths = await window.electronAPI.showFilePicker();
-                    for (const filePath of filePaths) {
-                      await handleFileAttach(filePath);
-                    }
-                  } catch (error) {
-                    console.error('File picker failed:', error);
-                  }
-                }}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors flex items-center gap-2"
-              >
-                <Paperclip className="w-4 h-4" />
-                Attach
-              </button>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-gray-500">Presets:</span>
-              <button
-                onClick={() => insertNotePreset('update')}
-                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
-              >
-                <FileEdit className="w-3 h-3" />
-                Update
-              </button>
-              <button
-                onClick={() => insertNotePreset('call')}
-                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
-              >
-                <Phone className="w-3 h-3" />
-                Call
-              </button>
-              <button
-                onClick={() => insertNotePreset('quote')}
-                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
-              >
-                <DollarSign className="w-3 h-3" />
-                Quote
-              </button>
-              <button
-                onClick={() => insertNotePreset('shipping')}
-                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
-              >
-                <Truck className="w-3 h-3" />
-                Shipping
-              </button>
-              <button
-                onClick={() => insertNotePreset('waiting')}
-                className="px-2 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded flex items-center gap-1"
-              >
-                <Clock className="w-3 h-3" />
-                Waiting
-              </button>
-            </div>
-            <div className="text-xs text-gray-500 mt-2">Ctrl+V to paste image, or drag & drop files</div>
-          </div>
+          <NewNoteComposer
+            onAddNote={handleAddNote}
+            onInsertPreset={insertNotePreset}
+            onFileAttach={handleFileAttach}
+            onFilePicker={handleFilePicker}
+          />
 
           <div
             ref={dropZoneRef}
@@ -782,7 +783,7 @@ Prices/quotes:`;
         onToggleDone={() => handleStatusChange(task.status === 'DONE' ? 'OPEN' : 'DONE')}
         onArchive={() => handleStatusChange('ARCHIVED')}
         onSetPriority={handlePriorityChange}
-        onAddNote={() => noteInputRef.current?.focus()}
+        onAddNote={() => {}}
         onAttachFile={async () => {
           try {
             const filePaths = await window.electronAPI.showFilePicker();

@@ -72,6 +72,10 @@ const electronAPI = {
     content: string;
     updateTouched?: boolean;
   }): Promise<TimelineEntry> => ipcRenderer.invoke('addTimelineEntry', payload),
+  updateTimelineEntry: (entryId: string, content: string): Promise<TimelineEntry | null> => 
+    ipcRenderer.invoke('updateTimelineEntry', entryId, content),
+  deleteTimelineEntry: (entryId: string): Promise<boolean> => 
+    ipcRenderer.invoke('deleteTimelineEntry', entryId),
   attachFile: (taskId: string, filePath: string): Promise<string> => 
     ipcRenderer.invoke('attachFile', taskId, filePath),
   pasteImage: (taskId: string, imageBuffer: Uint8Array): Promise<string> => 

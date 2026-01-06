@@ -3,17 +3,21 @@ import { app, BrowserWindow, ipcMain, dialog, Menu } from 'electron';
 import { EventEmitter } from 'events';
 import { join } from 'path';
 import { existsSync, readFileSync } from 'fs';
-import { initDatabase } from './db/client';
+import { initDatabase, getDatabase } from './db/client';
 import { 
   getTasks, 
   getTaskById, 
   createTask, 
   updateTask, 
   addTimelineEntry,
+  updateTimelineEntry,
+  deleteTimelineEntry,
   searchTasks,
   cleanupExpiredTasks,
   deleteTask
 } from './db/queries';
+import { timelineEntries } from './db/schema';
+import { eq } from 'drizzle-orm';
 import { processFileAttachment, processImagePaste, getAttachmentAbsolutePath, openAttachment, revealAttachment, copyAttachmentPath } from './file-handler';
 import { updateGamification, checkNecromancerBonus } from './gamification';
 
@@ -259,6 +263,43 @@ ipcMain.handle('addTimelineEntry', async (_event, payload: {
   
   emitDataUpdated({ reason: 'timeline_entry_added', taskId: payload.taskId });
   return entry;
+});
+
+ipcMain.handle('updateTimelineEntry', async (_event, entryId: string, content: string) => {
+  const entry = await updateTimelineEntry(entryId, content);
+  if (entry) {
+    // Update task's touched time when a timeline entry is edited (context update)
+    await updateTask({ id: entry.task_id, updateTouched: true });
+    await checkNecromancerBonus(entry.task_id);
+    emitDataUpdated({ reason: 'timeline_entry_updated', taskId: entry.task_id });
+  }
+  return entry;
+});
+
+ipcMain.handle('deleteTimelineEntry', async (_event, entryId: string) => {
+  // Get entry first to know which task it belongs to
+  const db = getDatabase();
+  const entry = await db
+    .select()
+    .from(timelineEntries)
+    .where(eq(timelineEntries.id, entryId))
+    .limit(1);
+  
+  if (entry.length === 0) {
+    return false;
+  }
+  
+  const taskId = entry[0].task_id;
+  const success = await deleteTimelineEntry(entryId);
+  
+  if (success) {
+    // Update task's touched time when a timeline entry is deleted (context update)
+    await updateTask({ id: taskId, updateTouched: true });
+    await checkNecromancerBonus(taskId);
+    emitDataUpdated({ reason: 'timeline_entry_deleted', taskId });
+  }
+  
+  return success;
 });
 
 ipcMain.handle('attachFile', async (_event, taskId: string, filePath: string) => {

@@ -1,4 +1,4 @@
-﻿// File handling utilities for attachments
+// File handling utilities for attachments
 import { app, shell, clipboard } from 'electron';
 import { join } from 'path';
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
